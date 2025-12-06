@@ -1,0 +1,163 @@
+"use client"
+
+import React, { useState } from "react"
+import { useTranslations } from "../hooks/use-translations"
+
+interface IdCardFormProps {
+  onNavigate: (view: any) => void
+  language: string
+  onCancel?: () => void
+}
+
+export default function IdCardForm({ onNavigate, language }: IdCardFormProps) {
+  const t = useTranslations(language)
+
+  const [fullName, setFullName] = useState("")
+  const [designation, setDesignation] = useState("")
+  const [department, setDepartment] = useState("")
+  const [employeeId, setEmployeeId] = useState("")
+  const [contactNumber, setContactNumber] = useState("")
+  const [email, setEmail] = useState("")
+  const [bloodGroup, setBloodGroup] = useState("")
+  const [address, setAddress] = useState("")
+  const [photo, setPhoto] = useState<File | null>(null)
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    onNavigate("submitted")
+  }
+
+  return (
+    <div className="max-w-3xl mx-auto bg-white shadow-md rounded-lg p-8">
+      <h2 className="text-2xl font-semibold mb-6 text-gray-700">
+        {t("idFormTitle")}
+      </h2>
+
+      <form onSubmit={handleSubmit} className="space-y-6">
+        {/* Full Name */}
+        <div>
+          <label className="block text-gray-600 mb-1">{t("fullName")}</label>
+          <input
+            type="text"
+            className="input-field"
+            value={fullName}
+            onChange={(e) => setFullName(e.target.value)}
+            required
+          />
+        </div>
+
+        {/* Designation */}
+        <div>
+          <label className="block text-gray-600 mb-1">{t("designation")}</label>
+          <input
+            type="text"
+            className="input-field"
+            value={designation}
+            onChange={(e) => setDesignation(e.target.value)}
+            required
+          />
+        </div>
+
+        {/* Department */}
+        <div>
+          <label className="block text-gray-600 mb-1">{t("department")}</label>
+          <input
+            type="text"
+            className="input-field"
+            value={department}
+            onChange={(e) => setDepartment(e.target.value)}
+            required
+          />
+        </div>
+
+        {/* Employee ID */}
+        <div>
+          <label className="block text-gray-600 mb-1">{t("employeeId")}</label>
+          <input
+            type="text"
+            className="input-field"
+            value={employeeId}
+            onChange={(e) => setEmployeeId(e.target.value)}
+            required
+          />
+        </div>
+
+        {/* Contact Number */}
+        <div>
+          <label className="block text-gray-600 mb-1">{t("contactNumber")}</label>
+          <input
+            type="tel"
+            className="input-field"
+            value={contactNumber}
+            onChange={(e) => setContactNumber(e.target.value)}
+            required
+          />
+        </div>
+
+        {/* Email */}
+        <div>
+          <label className="block text-gray-600 mb-1">{t("email")}</label>
+          <input
+            type="email"
+            className="input-field"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+          />
+        </div>
+
+        {/* Blood Group */}
+        <div>
+          <label className="block text-gray-600 mb-1">{t("bloodGroup")}</label>
+          <input
+            type="text"
+            className="input-field"
+            value={bloodGroup}
+            onChange={(e) => setBloodGroup(e.target.value)}
+            required
+          />
+        </div>
+
+        {/* Address */}
+        <div>
+          <label className="block text-gray-600 mb-1">{t("address")}</label>
+          <textarea
+            className="input-field"
+            value={address}
+            onChange={(e) => setAddress(e.target.value)}
+            required
+          />
+        </div>
+
+        {/* Photo Upload */}
+        <div>
+          <label className="block text-gray-600 mb-1">{t("photoUpload")}</label>
+          <input
+            type="file"
+            accept="image/*"
+            className="input-field"
+            onChange={(e) => setPhoto(e.target.files?.[0] || null)}
+            required
+          />
+        </div>
+
+        <div className="flex items-center justify-between mt-8">
+          <button
+            type="button"
+            onClick={() => onNavigate("menu")}
+            className="px-6 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400"
+          >
+            {t("cancel")}
+          </button>
+
+          <button
+            type="submit"
+            className="px-6 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
+          >
+            {t("submit")}
+          </button>
+        </div>
+      </form>
+    </div>
+  )
+}
