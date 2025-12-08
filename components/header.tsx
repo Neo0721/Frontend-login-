@@ -4,23 +4,18 @@ import { useState } from "react"
 import { Globe, HelpCircle, User } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
-
-
 interface HeaderProps {
   language: "en" | "hi"
   setLanguage: (lang: "en" | "hi") => void
   showUserInfo?: boolean
 
-  isLoggedIn?: boolean       // ADD THIS
-  userName?: string          // (already there)
-  employeeId?: string        // ADD THIS
+  isLoggedIn?: boolean
+  userName?: string
+  employeeId?: string
   empNo?: string
 
-  onChangePassword?: () => void
   onLogout?: () => void
 }
-
-
 
 export default function Header({
   language = "en",
@@ -30,7 +25,6 @@ export default function Header({
   userName,
   employeeId,
   empNo,
-  onChangePassword,
   onLogout,
 }: HeaderProps) {
   const [showLanguageMenu, setShowLanguageMenu] = useState(false)
@@ -112,15 +106,7 @@ export default function Header({
                       <div className="font-semibold text-sm">{userName}</div>
                       <div className="text-xs text-gray-500">ID: {empNo}</div>
                     </div>
-                    <button
-                      onClick={() => {
-                        onChangePassword?.()
-                        setShowUserMenu(false)
-                      }}
-                      className="block w-full text-left px-3 py-2 hover:bg-gray-100"
-                    >
-                      {language === "en" ? "Change Password" : "पासवर्ड बदलें"}
-                    </button>
+
                     <button
                       onClick={() => {
                         onLogout?.()

@@ -360,6 +360,9 @@ export default function IdCardForm({
       e.mobileNumber = txt("Enter a valid 10-digit mobile number.")
     }
     if (!forwardingOfficer) e.forwardingOfficer = txt("Select a forwarding officer.")
+    if (!formData.pinCode?.trim()) e.pinCode = txt("Pin code is required.")
+    if (!formData.district?.trim()) e.district = txt("District is required.")
+    if (!formData.state?.trim()) e.state = txt("State is required.")
     if (!familyMembers || familyMembers.length === 0) {
       e.family = txt("Add at least one family member.")
     } else {
@@ -471,6 +474,19 @@ export default function IdCardForm({
     } as React.CSSProperties,
   }
 
+  // helper to render label plus red star above when required
+  const RenderLabel = ({ text, required = false }: { text: string; required?: boolean }) => (
+  <label style={{ ...styles.label, display: "flex", alignItems: "center", gap: 4 }}>
+    <span>{text}</span>
+    {required && (
+      <span style={{ color: "#d32f2f", fontWeight: 700 }}>
+        *
+      </span>
+    )}
+  </label>
+);
+
+
   return (
     <main className="min-h-screen py-8" style={{ background: "var(--page-bg, #fafafa)" }}>
       <div className="max-w-6xl mx-auto px-6">
@@ -541,11 +557,12 @@ export default function IdCardForm({
           <hr className="my-6" style={{ borderColor: "#eee" }} />
           <h3 style={{ ...styles.sectionHeading }}>{txt("SECTION B – APPLICATION FORM")}</h3>
 
+          {/* NOTE: we keep a single form that now will include SECTION B, SECTION C and actions */}
           <form onSubmit={handleSubmit} className="mt-6 space-y-6">
             {/* form fields unchanged */}
             <div className="grid md:grid-cols-2 gap-6">
               <div>
-                <label style={styles.label}>{txt("Purpose of Making ID Card")}</label>
+                <RenderLabel text={txt("Purpose of Making ID Card")} required />
                 <select
                   className="rounded-xl px-4 py-3 w-full"
                   style={{ border: "1px solid #e6e6e6", background: "white", appearance: "none" }}
@@ -562,7 +579,7 @@ export default function IdCardForm({
               </div>
 
               <div>
-                <label style={styles.label}>{txt("Department")}</label>
+                <RenderLabel text={txt("Department")} required />
                 <select
                   className="rounded-xl px-4 py-3 w-full"
                   style={{ border: "1px solid #e6e6e6", background: "white", appearance: "none" }}
@@ -578,97 +595,97 @@ export default function IdCardForm({
               </div>
 
               <div>
-                <label style={styles.label}>{txt("Unit")}</label>
+                <RenderLabel text={txt("Unit")} required />
                 <Input className="rounded-xl" value={formData.unit} onChange={(e: any) => setFormData((s) => ({ ...s, unit: e.target.value }))} required />
                 {errors.unit && <div style={styles.errorText}>{errors.unit}</div>}
               </div>
 
               <div>
-                <label style={styles.label}>{txt("Employee Name (English)")}</label>
+                <RenderLabel text={txt("Employee Name (English)")} required />
                 <Input className="rounded-xl" value={formData.employeeNameEn} onChange={(e: any) => setFormData((s) => ({ ...s, employeeNameEn: e.target.value }))} required />
                 {errors.employeeNameEn && <div style={styles.errorText}>{errors.employeeNameEn}</div>}
               </div>
 
               {language === "hi" && (
                 <div>
-                  <label style={styles.label}>{txt("Employee Name (Hindi)")}</label>
+                  <RenderLabel text={txt("Employee Name (Hindi)")} />
                   <Input className="rounded-xl" value={formData.employeeNameHi} onChange={(e: any) => setFormData((s) => ({ ...s, employeeNameHi: e.target.value }))} />
                 </div>
               )}
 
               <div>
-                <label style={styles.label}>{txt("Designation (English)")}</label>
+                <RenderLabel text={txt("Designation (English)")} required />
                 <Input className="rounded-xl" value={formData.designationEn} onChange={(e: any) => setFormData((s) => ({ ...s, designationEn: e.target.value }))} required />
                 {errors.designationEn && <div style={styles.errorText}>{errors.designationEn}</div>}
               </div>
 
               <div>
-                <label style={styles.label}>{txt("Date of Appointment")}</label>
+                <RenderLabel text={txt("Date of Appointment")} required />
                 <Input type="date" className="rounded-xl" value={formData.dateOfAppointment} onChange={(e: any) => setFormData((s) => ({ ...s, dateOfAppointment: e.target.value }))} required />
                 {errors.dateOfAppointment && <div style={styles.errorText}>{errors.dateOfAppointment}</div>}
               </div>
 
               <div>
-                <label style={styles.label}>{txt("Nearest RH/HU")}</label>
+                <RenderLabel text={txt("Nearest RH/HU")} required />
                 <Input className="rounded-xl" value={formData.nearestRH} onChange={(e: any) => setFormData((s) => ({ ...s, nearestRH: e.target.value }))} required />
               </div>
 
               <div>
-                <label style={styles.label}>{txt("Place of Work")}</label>
+                <RenderLabel text={txt("Place of Work")} required />
                 <Input className="rounded-xl" value={formData.placeOfWork} onChange={(e: any) => setFormData((s) => ({ ...s, placeOfWork: e.target.value }))} required />
               </div>
 
               <div>
-                <label style={styles.label}>{txt("Pay Level")}</label>
+                <RenderLabel text={txt("Pay Level")} required />
                 <Input className="rounded-xl" value={formData.payLevel} onChange={(e: any) => setFormData((s) => ({ ...s, payLevel: e.target.value }))} required />
               </div>
 
               <div>
-                <label style={styles.label}>{txt("Email")}</label>
+                <RenderLabel text={txt("Email")} required />
                 <Input type="email" className="rounded-xl" value={formData.email} onChange={(e: any) => setFormData((s) => ({ ...s, email: e.target.value }))} required />
                 {errors.email && <div style={styles.errorText}>{errors.email}</div>}
               </div>
 
               <div>
-                <label style={styles.label}>{txt("Mobile Number")}</label>
+                <RenderLabel text={txt("Mobile Number")} required />
                 <Input type="tel" className="rounded-xl" value={formData.mobileNumber} onChange={(e: any) => setFormData((s) => ({ ...s, mobileNumber: e.target.value }))} required />
                 {errors.mobileNumber && <div style={styles.errorText}>{errors.mobileNumber}</div>}
               </div>
 
               <div>
-                <label style={styles.label}>{txt("Pin Code")}</label>
+                <RenderLabel text={txt("Pin Code")} required />
                 <Input className="rounded-xl" value={formData.pinCode} onChange={(e: any) => setFormData((s) => ({ ...s, pinCode: e.target.value }))} required />
               </div>
 
               <div>
-                <label style={styles.label}>{txt("District")}</label>
+                <RenderLabel text={txt("District")} required />
                 <Input className="rounded-xl" value={formData.district} onChange={(e: any) => setFormData((s) => ({ ...s, district: e.target.value }))} required />
               </div>
 
               <div>
-                <label style={styles.label}>{txt("State")}</label>
+                <RenderLabel text={txt("State")} required />
                 <Input className="rounded-xl" value={formData.state} onChange={(e: any) => setFormData((s) => ({ ...s, state: e.target.value }))} required />
               </div>
 
               <div>
-                <label style={styles.label}>{txt("ID Card No (if applicable)")}</label>
+                <RenderLabel text={txt("ID Card No (if applicable)")} />
                 <Input className="rounded-xl" value={formData.idCardNo} onChange={(e: any) => setFormData((s) => ({ ...s, idCardNo: e.target.value }))} />
               </div>
             </div>
 
             <div>
-              <label style={styles.label}>{txt("Residential Address")}</label>
+              <RenderLabel text={txt("Residential Address")} required />
               <textarea value={formData.residentialAddress} onChange={(e) => setFormData((s) => ({ ...s, residentialAddress: e.target.value }))} className="w-full rounded-xl p-4" style={{ minHeight: 120, border: "1px solid #e6e6e6" }} required />
               {errors.residentialAddress && <div style={styles.errorText}>{errors.residentialAddress}</div>}
             </div>
 
             <div>
-              <label style={styles.label}>{txt("Unique Identification Mark")}</label>
+              <RenderLabel text={txt("Unique Identification Mark")} />
               <Input className="rounded-xl" value={formData.uniqueIdentificationMark} onChange={(e: any) => setFormData((s) => ({ ...s, uniqueIdentificationMark: e.target.value }))} placeholder={txt("Optional")} />
             </div>
 
             <div>
-              <label style={styles.label}>{txt("Upload Documents")}</label>
+              <RenderLabel text={txt("Upload Documents")} />
               <div style={styles.dashedBox}>
                 <Upload className="mx-auto" style={{ width: 36, height: 36, color: "#2e7d32" }} />
                 <div style={{ fontWeight: 700, marginTop: 8 }}>{txt("Upload Documents")}</div>
@@ -693,111 +710,117 @@ export default function IdCardForm({
               )}
             </div>
 
-            <div>
-              <label style={styles.label}>{txt("Select Forwarding Officer *")}</label>
-              <select className="rounded-xl px-4 py-3 w-full" style={{ border: "1px solid #e6e6e6", background: "white", appearance: "none" }} value={forwardingOfficer} onChange={(e) => setForwardingOfficer(e.target.value)} required>
-                <option value="">{txt("Select Forwarding Officer")}</option>
-                <option value="CO-001">Raj Kumar - Chief Officer</option>
-                <option value="AO-002">Priya Singh - Area Officer</option>
-                <option value="DO-003">Amit Patel - District Officer</option>
-              </select>
-              {errors.forwardingOfficer && <div style={styles.errorText}>{errors.forwardingOfficer}</div>}
-            </div>
-
-            <div className="flex gap-6 items-center mt-6">
-              <button type="button" onClick={() => saveDraft()} className="flex-1 border-2 rounded-xl" style={{ padding: "18px 28px", borderColor: "#0b3355", color: "#0b3355", fontWeight: 600 }}>
-                {txt("Save Draft")}
-              </button>
-
-              <button type="submit" className="flex-1 rounded-xl" style={{ padding: "18px 28px", background: "#2e7d32", color: "white", fontWeight: 600 }}>
-                {txt("Submit Application")}
-              </button>
-            </div>
+            {/* NOTE: forwarding officer + buttons moved below SECTION C */}
           </form>
 
           {/* SECTION C */}
-          <hr className="my-6" style={{ borderColor: "#eee" }} />
-          <h3 style={{ ...styles.sectionHeading }}>SECTION C – FAMILY DETAILS</h3>
+<hr className="my-6" style={{ borderColor: "#eee" }} />
+<h3 style={{ ...styles.sectionHeading }}>SECTION C – FAMILY DETAILS</h3>
 
-          <div className="mt-4 space-y-4">
-            {familyMembers.map((m, idx) => (
-              <div key={m.id} className="rounded-lg p-4" style={{ background: "#f6f6f6", border: "1px solid #ececec" }}>
-                <div className="grid md:grid-cols-2 gap-6">
-                  <div>
-                    <label style={styles.label}>{txt("Full Name")}</label>
-                    <Input value={m.name} onChange={(e: any) => updateFamilyMember(m.id, "name", e.target.value)} placeholder="" />
-                    {idx === 0 && errors["family.0.name"] && <div style={styles.errorText}>{errors["family.0.name"]}</div>}
-                  </div>
+<div className="mt-4 space-y-4">
+  {familyMembers.map((m, idx) => (
+    <div key={m.id} className="rounded-lg p-4" style={{ background: "#f6f6f6", border: "1px solid #ececec" }}>
+      <div className="grid md:grid-cols-2 gap-6">
+        <div>
+          <RenderLabel text={txt("Full Name")} required={idx === 0} />
+          <Input value={m.name} onChange={(e: any) => updateFamilyMember(m.id, "name", e.target.value)} placeholder="" />
+          {idx === 0 && errors["family.0.name"] && <div style={styles.errorText}>{errors["family.0.name"]}</div>}
+        </div>
 
-                  <div>
-                    <label style={styles.label}>{txt("Relation")}</label>
-                    <select value={m.relation} onChange={(e) => updateFamilyMember(m.id, "relation", e.target.value)} className="w-full rounded-xl px-4 py-3" style={{ border: "1px solid #e6e6e6" }}>
-                      <option>Spouse</option>
-                      <option>Son</option>
-                      <option>Daughter</option>
-                      <option>Father</option>
-                      <option>Mother</option>
-                      <option>Dependent</option>
-                    </select>
-                  </div>
+        <div>
+          <RenderLabel text={txt("Relation")} />
+          <select value={m.relation} onChange={(e) => updateFamilyMember(m.id, "relation", e.target.value)} className="w-full rounded-xl px-4 py-3" style={{ border: "1px solid #e6e6e6" }}>
+            <option>Spouse</option>
+            <option>Son</option>
+            <option>Daughter</option>
+            <option>Father</option>
+            <option>Mother</option>
+            <option>Dependent</option>
+          </select>
+        </div>
 
-                  <div>
-                    <label style={styles.label}>{txt("Age / Date of Birth")}</label>
-                    <Input placeholder="DD/MM/YYYY" value={m.age} onChange={(e: any) => updateFamilyMember(m.id, "age", e.target.value)} />
-                    {idx === 0 && errors["family.0.age"] && <div style={styles.errorText}>{errors["family.0.age"]}</div>}
-                  </div>
+        <div>
+          <RenderLabel text={txt("Age / Date of Birth")} required={idx === 0} />
+          <Input placeholder="DD/MM/YYYY" value={m.age} onChange={(e: any) => updateFamilyMember(m.id, "age", e.target.value)} />
+          {idx === 0 && errors["family.0.age"] && <div style={styles.errorText}>{errors["family.0.age"]}</div>}
+        </div>
 
-                  <div>
-                    <label style={styles.label}>{txt("Gender")}</label>
-                    <select value={m.gender} onChange={(e) => updateFamilyMember(m.id, "gender", e.target.value)} className="w-full rounded-xl px-4 py-3" style={{ border: "1px solid #e6e6e6" }}>
-                      <option>Male</option>
-                      <option>Female</option>
-                      <option>Other</option>
-                    </select>
-                  </div>
+        <div>
+          <RenderLabel text={txt("Gender")} />
+          <select value={m.gender} onChange={(e) => updateFamilyMember(m.id, "gender", e.target.value)} className="w-full rounded-xl px-4 py-3" style={{ border: "1px solid #e6e6e6" }}>
+            <option>Male</option>
+            <option>Female</option>
+            <option>Other</option>
+          </select>
+        </div>
 
-                  <div className="md:col-span-2">
-                    <label style={styles.label}>{txt("Aadhaar Number (Optional)")}</label>
-                    <Input value={m.aadhaar} onChange={(e: any) => updateFamilyMember(m.id, "aadhaar", e.target.value)} placeholder={txt("Optional")} />
-                  </div>
+        <div className="md:col-span-2">
+          <RenderLabel text={txt("Aadhaar Number (Optional)")} />
+          <Input value={m.aadhaar} onChange={(e: any) => updateFamilyMember(m.id, "aadhaar", e.target.value)} placeholder={txt("Optional")} />
+        </div>
 
-                  <div className="md:col-span-2">
-                    <label style={styles.label}>{txt("Unique Identification Mark (Optional)")}</label>
-                    <Input value={m.uniqueIdentificationMark} onChange={(e: any) => updateFamilyMember(m.id, "uniqueIdentificationMark", e.target.value)} placeholder={txt("Optional")} />
-                  </div>
+        <div className="md:col-span-2">
+          <RenderLabel text={txt("Unique Identification Mark (Optional)")} />
+          <Input value={m.uniqueIdentificationMark} onChange={(e: any) => updateFamilyMember(m.id, "uniqueIdentificationMark", e.target.value)} placeholder={txt("Optional")} />
+        </div>
 
-                  <div className="md:col-span-2">
-                    <label style={styles.label}>{txt("Supporting Document (Optional)")}</label>
+        <div className="md:col-span-2">
+          <RenderLabel text={txt("Supporting Document (Optional)")} />
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 6 }}>
+            <label htmlFor={`member-doc-${m.id}`} className="rounded-xl px-4 py-2" style={{ border: "1px solid #e6e6e6", background: "white", cursor: "pointer", fontWeight: 600 }}>
+              {txt("Choose file")}
+            </label>
 
-                    <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 6 }}>
-                      <label htmlFor={`member-doc-${m.id}`} className="rounded-xl px-4 py-2" style={{ border: "1px solid #e6e6e6", background: "white", cursor: "pointer", fontWeight: 600 }}>
-                        {txt("Choose file")}
-                      </label>
+            <span style={{ color: "#6b7280", fontSize: 14 }}>{m.doc ? (m.doc instanceof File ? m.doc.name : (m.doc as any).name ?? txt("No file chosen")) : txt("No file chosen")}</span>
+          </div>
 
-                      <span style={{ color: "#6b7280", fontSize: 14 }}>{m.doc ? (m.doc instanceof File ? m.doc.name : (m.doc as any).name ?? txt("No file chosen")) : txt("No file chosen")}</span>
-                    </div>
+          <input id={`member-doc-${m.id}`} type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={(e) => updateFamilyMember(m.id, "doc", e.currentTarget.files?.[0] || null)} style={{ display: "none" }} />
+        </div>
+      </div>
 
-                    <input id={`member-doc-${m.id}`} type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={(e) => updateFamilyMember(m.id, "doc", e.currentTarget.files?.[0] || null)} style={{ display: "none" }} />
-                  </div>
-                </div>
+      <div className="mt-3">
+        {idx !== 0 ? (
+          <button type="button" onClick={() => removeFamilyMember(m.id)} style={{ color: "#d32f2f", fontWeight: 600 }}>
+            {txt("Remove")} ×
+          </button>
+        ) : (
+          <div style={{ height: 1 }} />
+        )}
+      </div>
+    </div>
+  ))}
 
-                <div className="mt-3">
-                  {idx !== 0 ? (
-                    <button type="button" onClick={() => removeFamilyMember(m.id)} style={{ color: "#d32f2f", fontWeight: 600 }}>
-                      {txt("Remove")} ×
-                    </button>
-                  ) : (
-                    <div style={{ height: 1 }} />
-                  )}
-                </div>
-              </div>
-            ))}
+  <div>
+    <button type="button" onClick={addFamilyMember} className="rounded-xl px-4 py-3" style={{ background: "#f6f6f6", color: "#2e7d32", fontWeight: 700 }}>
+      <Plus style={{ marginRight: 8 }} /> {txt("Add member")}
+    </button>
+  </div>
+</div>
 
-            <div>
-              <button type="button" onClick={addFamilyMember} className="rounded-xl px-4 py-3" style={{ background: "#f6f6f6", color: "#2e7d32", fontWeight: 700 }}>
-                <Plus style={{ marginRight: 8 }} /> {txt("Add member")}
-              </button>
-            </div>
+
+          {/* --- Forwarding officer & action buttons (moved after family details) --- */}
+          <div className="mt-6">
+            <label style={styles.label}>
+              <div style={{ color: "#d32f2f", marginBottom: 6, fontWeight: 700 }}>*</div>
+              {txt("Select Forwarding Officer *")}
+            </label>
+            <select className="rounded-xl px-4 py-3 w-full" style={{ border: "1px solid #e6e6e6", background: "white", appearance: "none" }} value={forwardingOfficer} onChange={(e) => setForwardingOfficer(e.target.value)} required>
+              <option value="">{txt("Select Forwarding Officer")}</option>
+              <option value="CO-001">Raj Kumar - Chief Officer</option>
+              <option value="AO-002">Priya Singh - Area Officer</option>
+              <option value="DO-003">Amit Patel - District Officer</option>
+            </select>
+            {errors.forwardingOfficer && <div style={styles.errorText}>{errors.forwardingOfficer}</div>}
+          </div>
+
+          <div className="flex gap-6 items-center mt-6">
+            <button type="button" onClick={() => saveDraft()} className="flex-1 border-2 rounded-xl" style={{ padding: "18px 28px", borderColor: "#0b3355", color: "#0b3355", fontWeight: 600 }}>
+              {txt("Save Draft")}
+            </button>
+
+            <button type="submit" className="flex-1 rounded-xl" style={{ padding: "18px 28px", background: "#2e7d32", color: "white", fontWeight: 600 }}>
+              {txt("Submit Application")}
+            </button>
           </div>
         </div>
       </div>
