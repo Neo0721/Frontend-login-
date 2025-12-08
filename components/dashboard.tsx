@@ -1,17 +1,29 @@
 "use client"
 
-import React, { useState } from "react"
+import React, { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { FileText, User, Lock } from "lucide-react"
+import { FileText, Lock } from "lucide-react"
 import IdCardForm from "@/components/id-card-form"
 
 interface DashboardProps {
-  onNavigate: (view: any) => void
+  onNavigate: (view: any, payload?: any) => void
   language: "en" | "hi"
   userName?: string
   empNo?: string
   onChangePassword?: () => void
+}
+
+type Application = {
+  id?: string | number
+  name?: string
+  employeeNo?: string
+  department?: string
+  dob?: string
+  phone?: string
+  documents?: string[]
+  status?: string
+  submittedAt?: string
 }
 
 export default function Dashboard({
@@ -24,6 +36,12 @@ export default function Dashboard({
   const [showIdCardForm, setShowIdCardForm] = useState(false)
   const [hasApplied, setHasApplied] = useState(false)
 
+  // Modal state for viewing application
+  const [isViewOpen, setIsViewOpen] = useState(false)
+  const [loadingView, setLoadingView] = useState(false)
+  const [application, setApplication] = useState<Application | null>(null)
+  const [viewError, setViewError] = useState<string | null>(null)
+
   // show id card form as a full screen modal replacement
   if (showIdCardForm) {
     return (
@@ -33,6 +51,52 @@ export default function Dashboard({
         onCancel={() => setShowIdCardForm(false)}
       />
     )
+  }
+
+  async function loadApplication(emp = empNo) {
+    setLoadingView(true)
+    setViewError(null)
+    try {
+      // Adjust this API path to your backend endpoint
+      const res = await fetch(`/api/idcard?employee=${encodeURIComponent(emp)}`)
+      if (!res.ok) throw new Error(`Failed to fetch (${res.status})`)
+      const data = await res.json()
+      // normalize or map to Application type as needed
+      setApplication(data || null)
+      // If there is application data, set hasApplied true
+      if (data) setHasApplied(true)
+    } catch (err) {
+      console.warn("Could not fetch application:", err)
+      // Fallback example data so modal still shows something while developing
+      setApplication({
+        id: "example-1",
+        status: "Submitted",
+        name: userName,
+        employeeNo: empNo,
+        department: "Engineering",
+        dob: "1995-03-12",
+        phone: "+91-9876543210",
+        documents: ["Passport (uploaded)", "Address proof (uploaded)"],
+        submittedAt: "2025-12-07T10:15:00Z",
+      })
+      // You can set a friendly message instead of treating this as a hard error:
+      setViewError("Could not fetch live data — showing example data.")
+      setHasApplied(true)
+    } finally {
+      setLoadingView(false)
+    }
+  }
+
+  function openViewModal() {
+    setIsViewOpen(true)
+    loadApplication()
+  }
+
+  function closeViewModal() {
+    setIsViewOpen(false)
+    setViewError(null)
+    // keep application in state for UX; you can clear if you prefer:
+    // setApplication(null)
   }
 
   return (
@@ -84,7 +148,7 @@ export default function Dashboard({
             <div className="w-full flex flex-col gap-3">
               <Button
                 variant="outline"
-                onClick={() => onNavigate?.("view-application")}
+                onClick={openViewModal}
                 className="w-full flex items-center justify-center gap-3 py-3 border-[#002B5C] text-[#002B5C]"
               >
                 {language === "en" ? "View Application" : "आवेदन देखें"}
@@ -158,6 +222,95 @@ export default function Dashboard({
         {/* Footer hint */}
         <div className="text-center text-sm text-gray-500 mt-6">{language === "en" ? "Need help? Contact HR." : "सहायता चाहिए? HR से संपर्क करें।"}</div>
       </div>
+
+      {/* View Application Modal */}
+      {isViewOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 bg-black/40"
+            onClick={closeViewModal}
+            aria-hidden="true"
+          />
+
+          <div className="relative bg-white rounded-2xl shadow-xl w-[92%] max-w-xl mx-auto p-6 z-10">
+            <button
+              className="absolute right-4 top-4 text-slate-500 hover:text-slate-800"
+              onClick={closeViewModal}
+              aria-label="Close"
+            >
+              ✕
+            </button>
+
+            <h4 className="text-lg font-semibold mb-2">{language === "en" ? "Application Details" : "आवेदन विवरण"}</h4>
+
+            {loadingView ? (
+              <div className="py-8 text-center">Loading…</div>
+            ) : viewError && !application ? (
+              <div className="py-6 text-center text-sm text-red-500">{viewError}</div>
+            ) : application ? (
+              <div className="space-y-3 text-sm text-slate-700">
+                {viewError && (
+                  <div className="text-xs text-amber-700">{viewError}</div>
+                )}
+
+                <div className="flex justify-between">
+                  <span className="font-medium">Name</span>
+                  <span>{application.name}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="font-medium">Employee No</span>
+                  <span>{application.employeeNo}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="font-medium">Department</span>
+                  <span>{application.department}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="font-medium">DOB</span>
+                  <span>{application.dob}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="font-medium">Phone</span>
+                  <span>{application.phone}</span>
+                </div>
+                <div>
+                  <div className="font-medium">Documents</div>
+                  <ul className="list-disc ml-5 mt-1 text-slate-600">
+                    {application.documents?.map((d, i) => (
+                      <li key={i}>{d}</li>
+                    ))}
+                  </ul>
+                </div>
+
+                <div className="flex justify-between">
+                  <span className="font-medium">Status</span>
+                  <span className="text-sm font-semibold">{application.status}</span>
+                </div>
+
+                <div className="text-right">
+                  <Button
+                    onClick={() => {
+                      closeViewModal()
+                      // Pass application id when navigating to update screen
+                      onNavigate?.("update-application", application?.id)
+                    }}
+                    className="px-4 py-2 mr-2"
+                  >
+                    {language === "en" ? "Edit" : "संपादित करें"}
+                  </Button>
+
+                  <Button onClick={closeViewModal} className="px-4 py-2 bg-blue-600 text-white">
+                    {language === "en" ? "Close" : "बंद करें"}
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="py-6 text-center text-sm text-slate-700">{language === "en" ? "No application found." : "कोई आवेदन नहीं मिला।"}</div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

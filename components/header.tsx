@@ -14,6 +14,7 @@ interface HeaderProps {
   employeeId?: string
   empNo?: string
 
+  onChangePassword?: () => void   // ✅ FIX ADDED
   onLogout?: () => void
 }
 
@@ -25,6 +26,7 @@ export default function Header({
   userName,
   employeeId,
   empNo,
+  onChangePassword,     // ✅ Accepting the prop
   onLogout,
 }: HeaderProps) {
   const [showLanguageMenu, setShowLanguageMenu] = useState(false)
@@ -100,6 +102,7 @@ export default function Header({
                 >
                   <User className="w-4 h-4" />
                 </Button>
+
                 {showUserMenu && (
                   <div className="absolute right-0 mt-2 w-48 bg-white text-[#002B5C] rounded shadow-lg py-2 z-10 text-sm">
                     <div className="px-3 py-2 border-b border-gray-200">
@@ -107,10 +110,22 @@ export default function Header({
                       <div className="text-xs text-gray-500">ID: {empNo}</div>
                     </div>
 
+                    {/* ✅ CHANGE PASSWORD BUTTON ADDED */}
                     <button
                       onClick={() => {
-                        onLogout?.()
-                        setShowUserMenu(false)
+                        onChangePassword?.();
+                        setShowUserMenu(false);
+                      }}
+                      className="block w-full text-left px-3 py-2 hover:bg-gray-100"
+                    >
+                      {language === "en" ? "Change Password" : "पासवर्ड बदलें"}
+                    </button>
+
+                    {/* Existing Logout Button */}
+                    <button
+                      onClick={() => {
+                        onLogout?.();
+                        setShowUserMenu(false);
                       }}
                       className="block w-full text-left px-3 py-2 hover:bg-gray-100 text-red-600"
                     >
