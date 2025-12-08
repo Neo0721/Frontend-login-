@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useEffect, useState } from "react"
+import React, { useEffect, useState, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { ChevronDown, ChevronUp, X, Upload, AlertCircle, Plus } from "lucide-react"
 import { Input } from "@/components/ui/input"
@@ -9,6 +9,7 @@ interface IdCardFormProps {
   onNavigate?: (view?: any) => void
   language: "en" | "hi"
   onCancel?: () => void
+  onSubmitSuccess?: () => void
   initialData?: any
   mode?: "edit" | "create"
 }
@@ -34,6 +35,7 @@ export default function IdCardForm({
   onNavigate,
   language,
   onCancel,
+  onSubmitSuccess,
   initialData = null,
   mode = "create",
 }: IdCardFormProps) {
@@ -103,16 +105,21 @@ export default function IdCardForm({
   })
   const [errors, setErrors] = useState<Record<string, string>>({})
 
+  // NEW: Success message state
+  const [showSuccessMessage, setShowSuccessMessage] = useState(false)
+
   // debug UI
   const [debugAttempts, setDebugAttempts] = useState<string[]>([])
   const pushDebug = (msg: string) => {
     try {
-      // log to console too
       // eslint-disable-next-line no-console
       console.log("[IdCardForm]", msg)
     } catch {}
     setDebugAttempts((p) => [...p, msg])
   }
+
+  // ref to submit button so we can inspect coordinates
+  const submitBtnRef = useRef<HTMLButtonElement | null>(null)
 
   // ---------- robust back handler ----------
   const probeCandidatesAndNavigate = async (candidates: string[]) => {
@@ -374,29 +381,136 @@ export default function IdCardForm({
     return Object.keys(e).length === 0
   }
 
-  const submitFinal = () => {
+  // Helper: if something is blocking the button, flash a red outline around that element (and log it)
+  const inspectBlockingElement = (btn: HTMLButtonElement) => {
+    try {
+      const rect = btn.getBoundingClientRect()
+      const centerX = rect.left + rect.width / 2
+      const centerY = rect.top + rect.height / 2
+      // element at the center of the button
+      const el = document.elementFromPoint(centerX, centerY) as HTMLElement | null
+      console.log("[IdCardForm] elementFromPoint at button center:", el)
+      if (!el) {
+        console.log("[IdCardForm] No element found at button center.")
+        return
+      }
+      // if the found element is button itself or a child, nothing blocking
+      if (btn.contains(el) || el === btn) {
+        console.log("[IdCardForm] Click target is the button itself.")
+        return
+      }
+      // otherwise highlight the blocking element temporarily
+      const prevOutline = el.style.outline
+      const prevBoxShadow = el.style.boxShadow
+      el.style.outline = "3px solid rgba(255,0,0,0.85)"
+      el.style.boxShadow = "0 6px 18px rgba(255,0,0,0.15)"
+      console.warn("[IdCardForm] Detected possible blocking element:", el, " — flashing red outline for 2s")
+      alert("Detected possible blocking element — it will be flashed in red for 2s. Check console for element details.")
+      setTimeout(() => {
+        try {
+          el.style.outline = prevOutline
+          el.style.boxShadow = prevBoxShadow
+        } catch {}
+      }, 2000)
+    } catch (err) {
+      console.warn("[IdCardForm] inspectBlockingElement failed:", err)
+    }
+  }
+
+  // New: global click inspector (temporary) — logs element at click and points out overlays.
+  const handleGlobalInspect = (ev?: MouseEvent) => {
+    try {
+      const x = ev ? ev.clientX : window.innerWidth / 2
+      const y = ev ? ev.clientY : window.innerHeight / 2
+      const el = document.elementFromPoint(x, y) as HTMLElement | null
+      console.log("[IdCardForm] inspect at", x, y, el)
+      if (el) {
+        alert(`Element at point: ${el.tagName}${el.id ? `#${el.id}` : ""}${el.className ? `.${String(el.className).split(" ").join(".")}` : ""}`)
+      } else {
+        alert("No element found at that point.")
+      }
+    } catch (err) {
+      console.warn("handleGlobalInspect failed", err)
+    }
+  }
+
+  // NOTE: show non-blocking banner immediately, then navigate after a short pause
+  const submitFinal = async () => {
     try {
       localStorage.removeItem("idcardDraft")
     } catch (err) {
       // eslint-disable-next-line no-console
       console.warn("Failed to remove draft from localStorage", err)
     }
-    alert(txt("Application submitted"))
+
+    // Show the non-blocking banner immediately so user definitely sees it
     try {
-      onNavigate?.("application-status")
-    } catch {
-      router.replace("/")
+      setShowSuccessMessage(true)
+      // keep it visible long enough to read
+      await new Promise((res) => setTimeout(res, 1600))
+      setShowSuccessMessage(false)
+    } catch (err) {
+      // ignore setState errors
+    }
+
+    // Notify parent (Dashboard) that submission succeeded so it can update status UI
+    try {
+      onSubmitSuccess?.()
+    } catch (cbErr) {
+      // ignore callback errors but log
+      // eslint-disable-next-line no-console
+      console.warn("onSubmitSuccess threw:", cbErr)
+    }
+
+    // try to navigate back to dashboard via parent's navigation prop; fallback to router
+    try {
+      if (typeof onNavigate === "function") {
+        onNavigate("dashboard")
+        return
+      }
+    } catch (navErr) {
+      // eslint-disable-next-line no-console
+      console.warn("onNavigate threw:", navErr)
+    }
+
+    // final fallback navigation
+    try {
+      router.replace("/dashboard")
+    } catch (finalErr) {
+      // eslint-disable-next-line no-console
+      console.warn("router.replace('/dashboard') threw:", finalErr)
     }
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
+  const handleSubmit = (e?: React.SyntheticEvent) => {
+    // defensive logging so we can see clicks in console
+    // eslint-disable-next-line no-console
+    console.log("handleSubmit invoked", { eventType: e?.type ?? "no-event" })
+
+    if (e && typeof (e as any).preventDefault === "function") (e as any).preventDefault()
+    if (e && typeof (e as any).stopPropagation === "function") (e as any).stopPropagation()
+
+    // try to detect blocking element for debugging
+    try {
+      if (submitBtnRef.current) inspectBlockingElement(submitBtnRef.current)
+    } catch (err) {
+      console.warn("inspectBlockingElement threw:", err)
+    }
+
     if (!validate()) {
       // eslint-disable-next-line no-console
       console.log("Validation failed", errors)
+      // show a little visual feedback: flash first error field label if exists
+      try {
+        const firstKey = Object.keys(errors)[0]
+        if (firstKey) {
+          console.warn("[IdCardForm] First validation error:", firstKey, errors[firstKey])
+          alert(errors[firstKey])
+        }
+      } catch {}
       return
     }
-    submitFinal()
+    void submitFinal()
   }
   // ---------- end validation ----------
 
@@ -472,20 +586,37 @@ export default function IdCardForm({
       fontSize: 12,
       zIndex: 9999,
     } as React.CSSProperties,
+    smallDebugToolbar: {
+      position: "fixed",
+      left: 12,
+      bottom: 12,
+      zIndex: 99999,
+      display: "flex",
+      gap: 8,
+      alignItems: "center",
+    } as React.CSSProperties,
+    debugBtn: {
+      background: "#111827",
+      color: "white",
+      borderRadius: 8,
+      padding: "6px 10px",
+      fontSize: 12,
+      cursor: "pointer",
+      border: "none",
+    } as React.CSSProperties,
   }
 
-  // helper to render label plus red star above when required
+  // helper to render label plus red star inline when required
   const RenderLabel = ({ text, required = false }: { text: string; required?: boolean }) => (
-  <label style={{ ...styles.label, display: "flex", alignItems: "center", gap: 4 }}>
-    <span>{text}</span>
-    {required && (
-      <span style={{ color: "#d32f2f", fontWeight: 700 }}>
-        *
-      </span>
-    )}
-  </label>
-);
-
+    <label style={{ ...styles.label, display: "flex", alignItems: "center", gap: 6 }}>
+      <span>{text}</span>
+      {required && (
+        <span style={{ color: "#d32f2f", fontWeight: 700 }}>
+          *
+        </span>
+      )}
+    </label>
+  )
 
   return (
     <main className="min-h-screen py-8" style={{ background: "var(--page-bg, #fafafa)" }}>
@@ -503,6 +634,24 @@ export default function IdCardForm({
           <h1 className="heading-lg mb-6" style={{ fontSize: 28, fontWeight: 700, color: "#0b3355" }}>
             {txt("Apply for Identity Card")}
           </h1>
+
+          {/* SUCCESS MESSAGE (fixed, high z-index so always visible) */}
+          {showSuccessMessage && (
+            <div
+              className="text-center text-green-700 font-semibold bg-green-100 py-3 rounded-md mb-6"
+              style={{
+                position: "fixed",
+                top: 20,
+                left: "50%",
+                transform: "translateX(-50%)",
+                zIndex: 99999,
+                minWidth: 320,
+                boxShadow: "0 6px 18px rgba(0,0,0,0.12)",
+              }}
+            >
+              {language === "en" ? "Application submitted successfully!" : "आवेदन सफलतापूर्वक जमा किया गया!"}
+            </div>
+          )}
 
           {/* SECTION A */}
           <h3 style={{ ...styles.sectionHeading, marginTop: 6 }}>SECTION A – DOCUMENT REQUIREMENTS</h3>
@@ -557,8 +706,8 @@ export default function IdCardForm({
           <hr className="my-6" style={{ borderColor: "#eee" }} />
           <h3 style={{ ...styles.sectionHeading }}>{txt("SECTION B – APPLICATION FORM")}</h3>
 
-          {/* NOTE: we keep a single form that now will include SECTION B, SECTION C and actions */}
-          <form onSubmit={handleSubmit} className="mt-6 space-y-6">
+          {/* IMPORTANT: wire form submit to handleSubmit for reliable click/focus handling */}
+          <form onSubmit={handleSubmit} className="mt-6 space-y-6" style={{ position: "relative" }}>
             {/* form fields unchanged */}
             <div className="grid md:grid-cols-2 gap-6">
               <div>
@@ -710,119 +859,204 @@ export default function IdCardForm({
               )}
             </div>
 
-            {/* NOTE: forwarding officer + buttons moved below SECTION C */}
+            {/* SECTION C */}
+            <hr className="my-6" style={{ borderColor: "#eee" }} />
+            <h3 style={{ ...styles.sectionHeading }}>SECTION C – FAMILY DETAILS</h3>
+
+            <div className="mt-4 space-y-4">
+              {familyMembers.map((m, idx) => (
+                <div key={m.id} className="rounded-lg p-4" style={{ background: "#f6f6f6", border: "1px solid #ececec" }}>
+                  <div className="grid md:grid-cols-2 gap-6">
+                    <div>
+                      <RenderLabel text={txt("Full Name")} required={idx === 0} />
+                      <Input value={m.name} onChange={(e: any) => updateFamilyMember(m.id, "name", e.target.value)} placeholder="" />
+                      {idx === 0 && errors["family.0.name"] && <div style={styles.errorText}>{errors["family.0.name"]}</div>}
+                    </div>
+
+                    <div>
+                      <RenderLabel text={txt("Relation")} />
+                      <select value={m.relation} onChange={(e) => updateFamilyMember(m.id, "relation", e.target.value)} className="w-full rounded-xl px-4 py-3" style={{ border: "1px solid #e6e6e6" }}>
+                        <option>Spouse</option>
+                        <option>Son</option>
+                        <option>Daughter</option>
+                        <option>Father</option>
+                        <option>Mother</option>
+                        <option>Dependent</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <RenderLabel text={txt("Age / Date of Birth")} required={idx === 0} />
+                      <Input placeholder="DD/MM/YYYY" value={m.age} onChange={(e: any) => updateFamilyMember(m.id, "age", e.target.value)} />
+                      {idx === 0 && errors["family.0.age"] && <div style={styles.errorText}>{errors["family.0.age"]}</div>}
+                    </div>
+
+                    <div>
+                      <RenderLabel text={txt("Gender")} />
+                      <select value={m.gender} onChange={(e) => updateFamilyMember(m.id, "gender", e.target.value)} className="w-full rounded-xl px-4 py-3" style={{ border: "1px solid #e6e6e6" }}>
+                        <option>Male</option>
+                        <option>Female</option>
+                        <option>Other</option>
+                      </select>
+                    </div>
+
+                    <div className="md:col-span-2">
+                      <RenderLabel text={txt("Aadhaar Number (Optional)")} />
+                      <Input value={m.aadhaar} onChange={(e: any) => updateFamilyMember(m.id, "aadhaar", e.target.value)} placeholder={txt("Optional")} />
+                    </div>
+
+                    <div className="md:col-span-2">
+                      <RenderLabel text={txt("Unique Identification Mark (Optional)")} />
+                      <Input value={m.uniqueIdentificationMark} onChange={(e: any) => updateFamilyMember(m.id, "uniqueIdentificationMark", e.target.value)} placeholder={txt("Optional")} />
+                    </div>
+
+                    <div className="md:col-span-2">
+                      <RenderLabel text={txt("Supporting Document (Optional)")} />
+
+                      <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 6 }}>
+                        <label htmlFor={`member-doc-${m.id}`} className="rounded-xl px-4 py-2" style={{ border: "1px solid #e6e6e6", background: "white", cursor: "pointer", fontWeight: 600 }}>
+                          {txt("Choose file")}
+                        </label>
+
+                        <span style={{ color: "#6b7280", fontSize: 14 }}>{m.doc ? (m.doc instanceof File ? m.doc.name : (m.doc as any).name ?? txt("No file chosen")) : txt("No file chosen")}</span>
+                      </div>
+
+                      <input id={`member-doc-${m.id}`} type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={(e) => updateFamilyMember(m.id, "doc", e.currentTarget.files?.[0] || null)} style={{ display: "none" }} />
+                    </div>
+                  </div>
+
+                  <div className="mt-3">
+                    {idx !== 0 ? (
+                      <button type="button" onClick={() => removeFamilyMember(m.id)} style={{ color: "#d32f2f", fontWeight: 600 }}>
+                        {txt("Remove")} ×
+                      </button>
+                    ) : (
+                      <div style={{ height: 1 }} />
+                    )}
+                  </div>
+                </div>
+              ))}
+
+              <div>
+                <button type="button" onClick={addFamilyMember} className="rounded-xl px-4 py-3" style={{ background: "#f6f6f6", color: "#2e7d32", fontWeight: 700 }}>
+                  <Plus style={{ marginRight: 8 }} /> {txt("Add member")}
+                </button>
+              </div>
+            </div>
+
+            {/* Forwarding officer & actions (moved AFTER family details) */}
+            <div>
+              <RenderLabel text={txt("Select Forwarding Officer")} required />
+              <select className="rounded-xl px-4 py-3 w-full" style={{ border: "1px solid #e6e6e6", background: "white", appearance: "none" }} value={forwardingOfficer} onChange={(e) => setForwardingOfficer(e.target.value)} required>
+                <option value="">{txt("Select Forwarding Officer")}</option>
+                <option value="CO-001">Raj Kumar - Chief Officer</option>
+                <option value="AO-002">Priya Singh - Area Officer</option>
+                <option value="DO-003">Amit Patel - District Officer</option>
+              </select>
+              {errors.forwardingOfficer && <div style={styles.errorText}>{errors.forwardingOfficer}</div>}
+            </div>
+
+            <div className="flex gap-6 items-center mt-6">
+              <button
+                type="button"
+                onClick={() => saveDraft()}
+                className="flex-1 border-2 rounded-xl"
+                style={{ padding: "18px 28px", borderColor: "#0b3355", color: "#0b3355", fontWeight: 600 }}
+              >
+                {txt("Save Draft")}
+              </button>
+
+              {/* Defensive: keep type=submit, but ALSO attach an onClick handler that stops propagation and calls handleSubmit.
+                  Also bring the button visually forward with z-index and position. */}
+              <button
+                ref={submitBtnRef}
+                type="submit"
+                onClick={(ev) => {
+                  try {
+                    ev.preventDefault()
+                    ev.stopPropagation()
+                    console.log("[IdCardForm] submit button onClick fire - calling handleSubmit")
+                  } catch (err) {
+                    // ignore
+                  }
+                  handleSubmit(ev)
+                }}
+                onMouseDown={(ev) => {
+                  // call early on pointer down too — covers cases where overlays intercept click but not pointerdown
+                  try {
+                    ev.preventDefault()
+                    ev.stopPropagation()
+                  } catch {}
+                  handleSubmit(ev)
+                }}
+                onKeyDown={(ev) => {
+                  // support Enter key from keyboard
+                  if ((ev as any).key === "Enter") {
+                    ev.preventDefault()
+                    ev.stopPropagation()
+                    handleSubmit(ev)
+                  }
+                }}
+                className="flex-1 rounded-xl"
+                style={{
+                  padding: "18px 28px",
+                  background: "#2e7d32",
+                  color: "white",
+                  fontWeight: 600,
+                  position: "relative",
+                  zIndex: 2000, // bring to front to avoid being visually covered
+                  pointerEvents: "auto",
+                }}
+                aria-disabled={false}
+              >
+                {txt("Submit Application")}
+              </button>
+            </div>
           </form>
-
-          {/* SECTION C */}
-<hr className="my-6" style={{ borderColor: "#eee" }} />
-<h3 style={{ ...styles.sectionHeading }}>SECTION C – FAMILY DETAILS</h3>
-
-<div className="mt-4 space-y-4">
-  {familyMembers.map((m, idx) => (
-    <div key={m.id} className="rounded-lg p-4" style={{ background: "#f6f6f6", border: "1px solid #ececec" }}>
-      <div className="grid md:grid-cols-2 gap-6">
-        <div>
-          <RenderLabel text={txt("Full Name")} required={idx === 0} />
-          <Input value={m.name} onChange={(e: any) => updateFamilyMember(m.id, "name", e.target.value)} placeholder="" />
-          {idx === 0 && errors["family.0.name"] && <div style={styles.errorText}>{errors["family.0.name"]}</div>}
-        </div>
-
-        <div>
-          <RenderLabel text={txt("Relation")} />
-          <select value={m.relation} onChange={(e) => updateFamilyMember(m.id, "relation", e.target.value)} className="w-full rounded-xl px-4 py-3" style={{ border: "1px solid #e6e6e6" }}>
-            <option>Spouse</option>
-            <option>Son</option>
-            <option>Daughter</option>
-            <option>Father</option>
-            <option>Mother</option>
-            <option>Dependent</option>
-          </select>
-        </div>
-
-        <div>
-          <RenderLabel text={txt("Age / Date of Birth")} required={idx === 0} />
-          <Input placeholder="DD/MM/YYYY" value={m.age} onChange={(e: any) => updateFamilyMember(m.id, "age", e.target.value)} />
-          {idx === 0 && errors["family.0.age"] && <div style={styles.errorText}>{errors["family.0.age"]}</div>}
-        </div>
-
-        <div>
-          <RenderLabel text={txt("Gender")} />
-          <select value={m.gender} onChange={(e) => updateFamilyMember(m.id, "gender", e.target.value)} className="w-full rounded-xl px-4 py-3" style={{ border: "1px solid #e6e6e6" }}>
-            <option>Male</option>
-            <option>Female</option>
-            <option>Other</option>
-          </select>
-        </div>
-
-        <div className="md:col-span-2">
-          <RenderLabel text={txt("Aadhaar Number (Optional)")} />
-          <Input value={m.aadhaar} onChange={(e: any) => updateFamilyMember(m.id, "aadhaar", e.target.value)} placeholder={txt("Optional")} />
-        </div>
-
-        <div className="md:col-span-2">
-          <RenderLabel text={txt("Unique Identification Mark (Optional)")} />
-          <Input value={m.uniqueIdentificationMark} onChange={(e: any) => updateFamilyMember(m.id, "uniqueIdentificationMark", e.target.value)} placeholder={txt("Optional")} />
-        </div>
-
-        <div className="md:col-span-2">
-          <RenderLabel text={txt("Supporting Document (Optional)")} />
-          <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 6 }}>
-            <label htmlFor={`member-doc-${m.id}`} className="rounded-xl px-4 py-2" style={{ border: "1px solid #e6e6e6", background: "white", cursor: "pointer", fontWeight: 600 }}>
-              {txt("Choose file")}
-            </label>
-
-            <span style={{ color: "#6b7280", fontSize: 14 }}>{m.doc ? (m.doc instanceof File ? m.doc.name : (m.doc as any).name ?? txt("No file chosen")) : txt("No file chosen")}</span>
-          </div>
-
-          <input id={`member-doc-${m.id}`} type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={(e) => updateFamilyMember(m.id, "doc", e.currentTarget.files?.[0] || null)} style={{ display: "none" }} />
         </div>
       </div>
 
-      <div className="mt-3">
-        {idx !== 0 ? (
-          <button type="button" onClick={() => removeFamilyMember(m.id)} style={{ color: "#d32f2f", fontWeight: 600 }}>
-            {txt("Remove")} ×
-          </button>
-        ) : (
-          <div style={{ height: 1 }} />
-        )}
-      </div>
-    </div>
-  ))}
+      {/* Small debug toolbar — removable once you've debugged */}
+      <div style={styles.smallDebugToolbar}>
+        <button
+          style={styles.debugBtn}
+          onClick={() => {
+            try {
+              if (submitBtnRef.current) {
+                inspectBlockingElement(submitBtnRef.current)
+              } else {
+                alert("Submit button ref not available.")
+              }
+            } catch (err) {
+              console.warn(err)
+            }
+          }}
+          title="Flash any element blocking the submit button"
+        >
+          Inspect overlay
+        </button>
 
-  <div>
-    <button type="button" onClick={addFamilyMember} className="rounded-xl px-4 py-3" style={{ background: "#f6f6f6", color: "#2e7d32", fontWeight: 700 }}>
-      <Plus style={{ marginRight: 8 }} /> {txt("Add member")}
-    </button>
-  </div>
-</div>
+        <button
+          style={styles.debugBtn}
+          onClick={() => {
+            // force submit bypasses validation — useful to confirm navigation & banner
+            if (!confirm("Force submit will bypass validation and trigger the success flow. Use only for testing.")) return
+            void submitFinal()
+          }}
+          title="Bypass validation and run submit (for testing)"
+        >
+          Force submit
+        </button>
 
-
-          {/* --- Forwarding officer & action buttons (moved after family details) --- */}
-          <div className="mt-6">
-            <label style={styles.label}>
-              <div style={{ color: "#d32f2f", marginBottom: 6, fontWeight: 700 }}>*</div>
-              {txt("Select Forwarding Officer *")}
-            </label>
-            <select className="rounded-xl px-4 py-3 w-full" style={{ border: "1px solid #e6e6e6", background: "white", appearance: "none" }} value={forwardingOfficer} onChange={(e) => setForwardingOfficer(e.target.value)} required>
-              <option value="">{txt("Select Forwarding Officer")}</option>
-              <option value="CO-001">Raj Kumar - Chief Officer</option>
-              <option value="AO-002">Priya Singh - Area Officer</option>
-              <option value="DO-003">Amit Patel - District Officer</option>
-            </select>
-            {errors.forwardingOfficer && <div style={styles.errorText}>{errors.forwardingOfficer}</div>}
-          </div>
-
-          <div className="flex gap-6 items-center mt-6">
-            <button type="button" onClick={() => saveDraft()} className="flex-1 border-2 rounded-xl" style={{ padding: "18px 28px", borderColor: "#0b3355", color: "#0b3355", fontWeight: 600 }}>
-              {txt("Save Draft")}
-            </button>
-
-            <button type="submit" className="flex-1 rounded-xl" style={{ padding: "18px 28px", background: "#2e7d32", color: "white", fontWeight: 600 }}>
-              {txt("Submit Application")}
-            </button>
-          </div>
-        </div>
+        <button
+          style={{ ...styles.debugBtn, background: "#374151" }}
+          onClick={() => {
+            handleGlobalInspect()
+          }}
+          title="Inspect center of viewport"
+        >
+          Inspect center
+        </button>
       </div>
 
       {/* Debug UI */}
