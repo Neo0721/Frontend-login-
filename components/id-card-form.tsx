@@ -59,11 +59,11 @@ export default function IdCardForm({
       title: txt("A. New Appointment / Transfer"),
       docs: [txt("Memorandum / Transfer Letter Copy"), txt("Charge Report Copy"), txt("Current Address Proof Copy")],
     },
-    { id: "B", title: txt("B. Promotion"), docs: [txt("Promotion Order Copy")] },
-    { id: "C", title: txt("C. Lost Identity Card"), docs: [txt("Police FIR/NRIC")] },
-    { id: "D", title: txt("D. Damage Card"), docs: [txt("Damaged Card + Report")] },
-    { id: "E", title: txt("E. Inclusion of Dependents / Family Members"), docs: [txt("Marriage / Birth Certificate")] },
-    { id: "F", title: txt("F. Correction"), docs: [txt("Supporting Documents for Correction")] },
+    { id: "B", title: txt("B. Promotion"), docs: [txt("Promotion Order Copy"), txt("Old Identity Card Copy both sides")] },
+    { id: "C", title: txt("C. Lost Identity Card"), docs: [txt("Police Complaint Certificate Copy"), txt("Rs.100/- Money Receipt"), txt("Current Address Proof Copy")] },
+    { id: "D", title: txt("D. Damage Card"), docs: [txt("Rs.100/- Money Receipt"),  txt("Identity Card Copy both sides")] },
+    { id: "E", title: txt("E. Inclusion of Dependents / Family Members"), docs: [ txt(" Address Proof Copy"), txt("Marriage / Death / Birth Certificate")] },
+    { id: "F", title: txt("F. Correction"), docs: [txt("Rs.100/- Money Receipt"), txt("Identity Card Copy both sides"), txt(" Correction Documents")] },
   ]
 
   // state
@@ -107,6 +107,9 @@ export default function IdCardForm({
 
   // NEW: Success message state
   const [showSuccessMessage, setShowSuccessMessage] = useState(false)
+
+  // Live validation: touched state (ADDED)
+  const [touched, setTouched] = useState<Record<string, boolean>>({})
 
   // debug UI
   const [debugAttempts, setDebugAttempts] = useState<string[]>([])
@@ -344,8 +347,18 @@ export default function IdCardForm({
       return p.filter((m) => m.id !== id)
     })
 
-  const updateFamilyMember = (id: string, field: keyof FamilyMember, value: any) =>
+  // UPDATED: mark touched when updating a family member (to enable live validation)
+  const updateFamilyMember = (id: string, field: keyof FamilyMember, value: any) => {
     setFamilyMembers((p) => p.map((m) => (m.id === id ? { ...m, [field]: value } : m)))
+    // If this is primary member (first in array), mark touched keys for name/age
+    try {
+      const primaryId = familyMembers?.[0]?.id
+      if (id === primaryId) {
+        if (field === "name") touch("family.0.name")
+        if (field === "age") touch("family.0.age")
+      }
+    } catch {}
+  }
 
   // ---------- Validation ----------
   const validate = () => {
@@ -408,6 +421,133 @@ export default function IdCardForm({
     setErrors(e)
     return Object.keys(e).length === 0
   }
+
+  // Live validation helpers (ADDED)
+  const touch = (key: string) => setTouched((s) => ({ ...s, [key]: true }))
+
+  const validateField = (key: string, value: any, all?: { formData: typeof formData; familyMembers: FamilyMember[]; forwardingOfficer: string }) => {
+    const t = (k: string) => (language === "en" ? k : k)
+    const fd = all?.formData ?? formData
+    const fam = all?.familyMembers ?? familyMembers
+    const fo = all?.forwardingOfficer ?? forwardingOfficer
+
+    switch (key) {
+      case "purpose":
+        if (!value) return t("Purpose is required.")
+        return null
+      case "department":
+        if (!value) return t("Department is required.")
+        return null
+      case "unit":
+        if (!String(value).trim()) return t("Unit is required.")
+        return null
+      case "employeeNameEn":
+        if (!String(value).trim()) return t("Employee name is required.")
+        return null
+      case "designationEn":
+        if (!String(value).trim()) return t("Designation is required.")
+        return null
+      case "dateOfAppointment":
+        if (!value) return t("Date of appointment is required.")
+        return null
+      case "residentialAddress":
+        if (!String(value).trim()) return t("Residential address is required.")
+        return null
+      case "email":
+        if (!value) return t("Email is required.")
+        if (!/\S+@\S+\.\S+/.test(value)) return t("Enter a valid email.")
+        return null
+      case "mobileNumber":
+        if (!value) return t("Mobile number is required.")
+        if (!/^\d{10}$/.test(String(value))) return t("Enter a valid 10-digit mobile number.")
+        return null
+      case "pinCode":
+        if (!String(value).trim()) return t("Pin code is required.")
+        if (!/^\d{6}$/.test(String(value).trim())) return t("Enter a valid 6-digit pin code.")
+        return null
+      case "forwardingOfficer":
+        if (!fo) return t("Select a forwarding officer.")
+        return null
+      case "district":
+        if (!String(value).trim()) return t("District is required.")
+        return null
+      case "state":
+        if (!String(value).trim()) return t("State is required.")
+        return null
+
+      case "family.0.name": {
+        const primary = fam[0]
+        if (!primary?.name?.trim()) return t("Primary member name is required.")
+        return null
+      }
+      case "family.0.age": {
+        const primary = fam[0]
+        if (!primary?.age?.trim()) return t("Primary member DOB is required.")
+        const dt = new Date(primary.age)
+        if (isNaN(dt.getTime())) return t("Enter a valid date for primary member DOB.")
+        const today = new Date()
+        const dtNoTime = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate())
+        const todayNoTime = new Date(today.getFullYear(), today.getMonth(), today.getDate())
+        if (dtNoTime > todayNoTime) return t("DOB cannot be in the future.")
+        return null
+      }
+
+      default:
+        return null
+    }
+  }
+
+  const validateAll = () => {
+    const fullErrors: Record<string, string> = {}
+
+    if (!formData.purpose) fullErrors.purpose = txt("Purpose is required.")
+    if (!formData.department) fullErrors.department = txt("Department is required.")
+    if (!formData.unit?.trim()) fullErrors.unit = txt("Unit is required.")
+    if (!formData.employeeNameEn?.trim()) fullErrors.employeeNameEn = txt("Employee name is required.")
+    if (!formData.designationEn?.trim()) fullErrors.designationEn = txt("Designation is required.")
+    if (!formData.dateOfAppointment) fullErrors.dateOfAppointment = txt("Date of appointment is required.")
+    if (!formData.residentialAddress?.trim()) fullErrors.residentialAddress = txt("Residential address is required.")
+    if (!formData.email) fullErrors.email = txt("Email is required.")
+    else if (!/\S+@\S+\.\S+/.test(formData.email)) fullErrors.email = txt("Enter a valid email.")
+    if (!formData.mobileNumber) fullErrors.mobileNumber = txt("Mobile number is required.")
+    else if (!/^\d{10}$/.test(formData.mobileNumber)) fullErrors.mobileNumber = txt("Enter a valid 10-digit mobile number.")
+    if (!formData.pinCode?.trim()) fullErrors.pinCode = txt("Pin code is required.")
+    else if (!/^\d{6}$/.test(formData.pinCode.trim())) fullErrors.pinCode = txt("Enter a valid 6-digit pin code.")
+    if (!forwardingOfficer) fullErrors.forwardingOfficer = txt("Select a forwarding officer.")
+    if (!formData.district?.trim()) fullErrors.district = txt("District is required.")
+    if (!formData.state?.trim()) fullErrors.state = txt("State is required.")
+    if (!familyMembers || familyMembers.length === 0) fullErrors.family = txt("Add at least one family member.")
+    else {
+      const primary = familyMembers[0]
+      if (!primary.name?.trim()) fullErrors["family.0.name"] = txt("Primary member name is required.")
+      if (!primary.age?.trim()) fullErrors["family.0.age"] = txt("Primary member DOB is required.")
+      else {
+        const dt = new Date(primary.age)
+        if (isNaN(dt.getTime())) fullErrors["family.0.age"] = txt("Enter a valid date for primary member DOB.")
+        else {
+          const today = new Date()
+          const dtNoTime = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate())
+          const todayNoTime = new Date(today.getFullYear(), today.getMonth(), today.getDate())
+          if (dtNoTime > todayNoTime) fullErrors["family.0.age"] = txt("DOB cannot be in the future.")
+        }
+      }
+    }
+
+    // filter by touched so we only show errors for fields the user interacted with
+    const visibleErrors: Record<string, string> = {}
+    for (const k of Object.keys(fullErrors)) {
+      if (touched[k]) visibleErrors[k] = fullErrors[k]
+    }
+
+    setErrors(visibleErrors)
+    return Object.keys(fullErrors).length === 0
+  }
+
+  // Run live validation when relevant pieces change (ADDED)
+  useEffect(() => {
+    validateAll()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formData, familyMembers, forwardingOfficer, touched])
 
   // Helper: if something is blocking the button, flash a red outline around that element (and log it)
   const inspectBlockingElement = (btn: HTMLButtonElement) => {
@@ -510,6 +650,30 @@ export default function IdCardForm({
     }
   }
 
+  // mark all relevant fields touched (ADDED)
+  const markAllTouched = () => {
+    const keys = [
+      "purpose",
+      "department",
+      "unit",
+      "employeeNameEn",
+      "designationEn",
+      "dateOfAppointment",
+      "residentialAddress",
+      "email",
+      "mobileNumber",
+      "pinCode",
+      "forwardingOfficer",
+      "district",
+      "state",
+      "family.0.name",
+      "family.0.age",
+    ]
+    const newTouched = { ...touched }
+    keys.forEach((k) => (newTouched[k] = true))
+    setTouched(newTouched)
+  }
+
   const handleSubmit = (e?: React.SyntheticEvent) => {
     // defensive logging so we can see clicks in console
     // eslint-disable-next-line no-console
@@ -525,41 +689,70 @@ export default function IdCardForm({
       console.warn("inspectBlockingElement threw:", err)
     }
 
-    if (!validate()) {
-  // eslint-disable-next-line no-console
-  console.log("Validation failed", errors)
+    // Mark all fields touched so errors become visible, then run validateAll
+    markAllTouched()
+    const ok = validateAll()
 
-  try {
-    const firstKey = Object.keys(errors)[0]
-    if (firstKey) {
-      console.warn("[IdCardForm] First validation error:", firstKey, errors[firstKey])
+    if (!ok) {
+      // use the errors object (which now contains visible errors) to scroll to first error
+      try {
+        const firstKey = Object.keys(errors)[0] || Object.keys((() => {
+          // build a stable snapshot of full errors if errors still empty (race)
+          const fullErrs: Record<string, string> = {}
+          if (!formData.purpose) fullErrs.purpose = txt("Purpose is required.")
+          if (!formData.department) fullErrs.department = txt("Department is required.")
+          if (!formData.unit?.trim()) fullErrs.unit = txt("Unit is required.")
+          if (!formData.employeeNameEn?.trim()) fullErrs.employeeNameEn = txt("Employee name is required.")
+          if (!formData.designationEn?.trim()) fullErrs.designationEn = txt("Designation is required.")
+          if (!formData.dateOfAppointment) fullErrs.dateOfAppointment = txt("Date of appointment is required.")
+          if (!formData.residentialAddress?.trim()) fullErrs.residentialAddress = txt("Residential address is required.")
+          if (!formData.email) fullErrs.email = txt("Email is required.")
+          else if (!/\S+@\S+\.\S+/.test(formData.email)) fullErrs.email = txt("Enter a valid email.")
+          if (!formData.mobileNumber) fullErrs.mobileNumber = txt("Mobile number is required.")
+          else if (!/^\d{10}$/.test(formData.mobileNumber)) fullErrs.mobileNumber = txt("Enter a valid 10-digit mobile number.")
+          if (!formData.pinCode?.trim()) fullErrs.pinCode = txt("Pin code is required.")
+          else if (!/^\d{6}$/.test(formData.pinCode.trim())) fullErrs.pinCode = txt("Enter a valid 6-digit pin code.")
+          if (!forwardingOfficer) fullErrs.forwardingOfficer = txt("Select a forwarding officer.")
+          if (!formData.district?.trim()) fullErrs.district = txt("District is required.")
+          if (!formData.state?.trim()) fullErrs.state = txt("State is required.")
+          if (!familyMembers || familyMembers.length === 0) fullErrs.family = txt("Add at least one family member.")
+          else {
+            const primary = familyMembers[0]
+            if (!primary.name?.trim()) fullErrs["family.0.name"] = txt("Primary member name is required.")
+            if (!primary.age?.trim()) fullErrs["family.0.age"] = txt("Primary member DOB is required.")
+          }
+          return fullErrs
+        })())[0]
 
-      // Try to find an element with id equal to the error key
-      const el = document.getElementById(firstKey) as HTMLElement | null
+        if (firstKey) {
+          console.warn("[IdCardForm] First validation error:", firstKey, errors[firstKey])
 
-      // Fallback: find any input/textarea/select that has data-field attribute
-      const el2 =
-        el ||
-        document.querySelector(
-          `[data-field="${firstKey}"], input[name="${firstKey}"], textarea[name="${firstKey}"], select[name="${firstKey}"]`
-        ) as HTMLElement | null
+          // Try to find an element with id equal to the error key
+          const el = document.getElementById(firstKey) as HTMLElement | null
 
-      if (el2) {
-        try {
-          el2.scrollIntoView({ behavior: "smooth", block: "center" })
-          // try to focus an input inside (if not focusable directly)
-          const focusable = (el2 as HTMLElement).querySelector ? (el2 as HTMLElement).querySelector("input, textarea, select, button") : null
-          ;(focusable as HTMLElement | null)?.focus?.()
-          ;(el2 as HTMLElement).focus?.()
-        } catch {}
+          // Fallback: find any input/textarea/select that has data-field attribute
+          const el2 =
+            el ||
+            document.querySelector(
+              `[data-field="${firstKey}"], input[name="${firstKey}"], textarea[name="${firstKey}"], select[name="${firstKey}"]`
+            ) as HTMLElement | null
+
+          if (el2) {
+            try {
+              el2.scrollIntoView({ behavior: "smooth", block: "center" })
+              // try to focus an input inside (if not focusable directly)
+              const focusable = (el2 as HTMLElement).querySelector ? (el2 as HTMLElement).querySelector("input, textarea, select, button") : null
+              ;(focusable as HTMLElement | null)?.focus?.()
+              ;(el2 as HTMLElement).focus?.()
+            } catch {}
+          }
+        }
+      } catch (err) {
+        console.warn("handleSubmit scrolling to error failed", err)
       }
-    }
-  } catch (err) {
-    console.warn("handleSubmit scrolling to error failed", err)
-  }
 
-  return
-}
+      return
+    }
 
     void submitFinal()
   }
@@ -755,7 +948,7 @@ export default function IdCardForm({
 
           {/* SECTION B */}
           <hr className="my-6" style={{ borderColor: "#eee" }} />
-          <h3 style={{ ...styles.sectionHeading }}>{txt("SECTION B – APPLICATION FORM")}</h3>
+          <h3 style={{ ...styles.sectionHeading }}>{txt("SECTION B – EMPLOYEE DETAILS")}</h3>
 
           {/* IMPORTANT: wire form submit to handleSubmit for reliable click/focus handling */}
           <form onSubmit={handleSubmit} className="mt-6 space-y-6" style={{ position: "relative" }}>
@@ -767,7 +960,11 @@ export default function IdCardForm({
                   className="rounded-xl px-4 py-3 w-full"
                   style={{ border: "1px solid #e6e6e6", background: "white", appearance: "none" }}
                   value={formData.purpose}
-                  onChange={(e) => setFormData((s) => ({ ...s, purpose: e.target.value }))}
+                  onChange={(e) => {
+                    setFormData((s) => ({ ...s, purpose: e.target.value }))
+                    touch("purpose")
+                  }}
+                  onBlur={() => touch("purpose")}
                   required
                 >
                   <option value="">{txt("Select Purpose")}</option>
@@ -784,7 +981,11 @@ export default function IdCardForm({
                   className="rounded-xl px-4 py-3 w-full"
                   style={{ border: "1px solid #e6e6e6", background: "white", appearance: "none" }}
                   value={formData.department}
-                  onChange={(e) => setFormData((s) => ({ ...s, department: e.target.value }))}
+                  onChange={(e) => {
+                    setFormData((s) => ({ ...s, department: e.target.value }))
+                    touch("department")
+                  }}
+                  onBlur={() => touch("department")}
                   required
                 >
                   <option value="">{txt("Select")}</option>
@@ -796,13 +997,13 @@ export default function IdCardForm({
 
               <div>
                 <RenderLabel text={txt("Unit")} required />
-                <Input className="rounded-xl" value={formData.unit} onChange={(e: any) => setFormData((s) => ({ ...s, unit: e.target.value }))} required />
+                <Input className="rounded-xl" value={formData.unit} onChange={(e: any) => { setFormData((s) => ({ ...s, unit: e.target.value })); touch("unit") }} onBlur={() => touch("unit")} required />
                 {errors.unit && <div style={styles.errorText}>{errors.unit}</div>}
               </div>
 
               <div>
                 <RenderLabel text={txt("Employee Name (English)")} required />
-                <Input className="rounded-xl" value={formData.employeeNameEn} onChange={(e: any) => setFormData((s) => ({ ...s, employeeNameEn: e.target.value }))} required />
+                <Input className="rounded-xl" value={formData.employeeNameEn} onChange={(e: any) => { setFormData((s) => ({ ...s, employeeNameEn: e.target.value })); touch("employeeNameEn") }} onBlur={() => touch("employeeNameEn")} required />
                 {errors.employeeNameEn && <div style={styles.errorText}>{errors.employeeNameEn}</div>}
               </div>
 
@@ -815,13 +1016,13 @@ export default function IdCardForm({
 
               <div>
                 <RenderLabel text={txt("Designation (English)")} required />
-                <Input className="rounded-xl" value={formData.designationEn} onChange={(e: any) => setFormData((s) => ({ ...s, designationEn: e.target.value }))} required />
+                <Input className="rounded-xl" value={formData.designationEn} onChange={(e: any) => { setFormData((s) => ({ ...s, designationEn: e.target.value })); touch("designationEn") }} onBlur={() => touch("designationEn")} required />
                 {errors.designationEn && <div style={styles.errorText}>{errors.designationEn}</div>}
               </div>
 
               <div>
                 <RenderLabel text={txt("Date of Appointment")} required />
-                <Input type="date" className="rounded-xl" value={formData.dateOfAppointment} onChange={(e: any) => setFormData((s) => ({ ...s, dateOfAppointment: e.target.value }))} required />
+                <Input type="date" className="rounded-xl" value={formData.dateOfAppointment} onChange={(e: any) => { setFormData((s) => ({ ...s, dateOfAppointment: e.target.value })); touch("dateOfAppointment") }} onBlur={() => touch("dateOfAppointment")} required />
                 {errors.dateOfAppointment && <div style={styles.errorText}>{errors.dateOfAppointment}</div>}
               </div>
 
@@ -848,7 +1049,12 @@ export default function IdCardForm({
                   type="email"
                   className="rounded-xl"
                   value={formData.email}
-                  onChange={(e: any) => setFormData((s) => ({ ...s, email: e.target.value }))}
+                  onChange={(e: any) => {
+                    const v = e.target.value
+                    setFormData((s) => ({ ...s, email: v }))
+                    touch("email")
+                  }}
+                  onBlur={() => touch("email")}
                   required
                 />
                 {errors.email && <div style={styles.errorText}>{errors.email}</div>}
@@ -863,11 +1069,16 @@ export default function IdCardForm({
                   className="rounded-xl"
                   value={formData.mobileNumber}
                   onChange={(e: any) =>
-                    setFormData((s) => ({
-                      ...s,
-                      mobileNumber: String(e.target.value).replace(/\D/g, "").slice(0, 10),
-                    }))
+                    {
+                      const cleaned = String(e.target.value).replace(/\D/g, "").slice(0, 10)
+                      setFormData((s) => ({
+                        ...s,
+                        mobileNumber: cleaned,
+                      }))
+                      touch("mobileNumber")
+                    }
                   }
+                  onBlur={() => touch("mobileNumber")}
                   placeholder="Enter 10-digit mobile"
                   maxLength={10}
                   required
@@ -883,7 +1094,8 @@ export default function IdCardForm({
                   name="pinCode"
                   className="rounded-xl"
                   value={formData.pinCode}
-                  onChange={(e: any) => setFormData((s) => ({ ...s, pinCode: String(e.target.value).replace(/\D/g, "").slice(0, 6) }))}
+                  onChange={(e: any) => { const cleaned = String(e.target.value).replace(/\D/g, "").slice(0, 6); setFormData((s) => ({ ...s, pinCode: cleaned })); touch("pinCode") }}
+                  onBlur={() => touch("pinCode")}
                   placeholder="6-digit pin code"
                   maxLength={6}
                   required
@@ -894,12 +1106,12 @@ export default function IdCardForm({
 
               <div>
                 <RenderLabel text={txt("District")} required />
-                <Input className="rounded-xl" value={formData.district} onChange={(e: any) => setFormData((s) => ({ ...s, district: e.target.value }))} required />
+                <Input className="rounded-xl" value={formData.district} onChange={(e: any) => { setFormData((s) => ({ ...s, district: e.target.value })); touch("district") }} onBlur={() => touch("district")} required />
               </div>
 
               <div>
                 <RenderLabel text={txt("State")} required />
-                <Input className="rounded-xl" value={formData.state} onChange={(e: any) => setFormData((s) => ({ ...s, state: e.target.value }))} required />
+                <Input className="rounded-xl" value={formData.state} onChange={(e: any) => { setFormData((s) => ({ ...s, state: e.target.value })); touch("state") }} onBlur={() => touch("state")} required />
               </div>
 
               <div>
@@ -910,7 +1122,7 @@ export default function IdCardForm({
 
             <div>
               <RenderLabel text={txt("Residential Address")} required />
-              <textarea value={formData.residentialAddress} onChange={(e) => setFormData((s) => ({ ...s, residentialAddress: e.target.value }))} className="w-full rounded-xl p-4" style={{ minHeight: 120, border: "1px solid #e6e6e6" }} required />
+              <textarea value={formData.residentialAddress} onChange={(e) => { setFormData((s) => ({ ...s, residentialAddress: e.target.value })); touch("residentialAddress") }} onBlur={() => touch("residentialAddress")} className="w-full rounded-xl p-4" style={{ minHeight: 120, border: "1px solid #e6e6e6" }} required />
               {errors.residentialAddress && <div style={styles.errorText}>{errors.residentialAddress}</div>}
             </div>
 
@@ -959,7 +1171,8 @@ export default function IdCardForm({
                         id="family.0.name"
                         name="family.0.name"
                         value={m.name}
-                        onChange={(e: any) => updateFamilyMember(m.id, "name", e.target.value)}
+                        onChange={(e: any) => { updateFamilyMember(m.id, "name", e.target.value); touch("family.0.name") }}
+                        onBlur={() => touch("family.0.name")}
                         placeholder=""
                       />
                       {idx === 0 && errors["family.0.name"] && <div style={styles.errorText}>{errors["family.0.name"]}</div>}
@@ -987,7 +1200,8 @@ export default function IdCardForm({
                         type="date"
                         placeholder="DD/MM/YYYY"
                         value={m.age}
-                        onChange={(e: any) => updateFamilyMember(m.id, "age", e.target.value)}
+                        onChange={(e: any) => { updateFamilyMember(m.id, "age", e.target.value); touch("family.0.age") }}
+                        onBlur={() => touch("family.0.age")}
                       />
                       {idx === 0 && errors["family.0.age"] && <div style={styles.errorText}>{errors["family.0.age"]}</div>}
 
@@ -1049,7 +1263,7 @@ export default function IdCardForm({
             {/* Forwarding officer & actions (moved AFTER family details) */}
             <div>
               <RenderLabel text={txt("Select Forwarding Officer")} required />
-              <select className="rounded-xl px-4 py-3 w-full" style={{ border: "1px solid #e6e6e6", background: "white", appearance: "none" }} value={forwardingOfficer} onChange={(e) => setForwardingOfficer(e.target.value)} required>
+              <select className="rounded-xl px-4 py-3 w-full" style={{ border: "1px solid #e6e6e6", background: "white", appearance: "none" }} value={forwardingOfficer} onChange={(e) => { setForwardingOfficer(e.target.value); touch("forwardingOfficer") }} onBlur={() => touch("forwardingOfficer")} required>
                 <option value="">{txt("Select Forwarding Officer")}</option>
                 <option value="CO-001">Raj Kumar - Chief Officer</option>
                 <option value="AO-002">Priya Singh - Area Officer</option>
@@ -1116,49 +1330,6 @@ export default function IdCardForm({
             </div>
           </form>
         </div>
-      </div>
-
-      {/* Small debug toolbar — removable once you've debugged */}
-      <div style={styles.smallDebugToolbar}>
-        <button
-          style={styles.debugBtn}
-          onClick={() => {
-            try {
-              if (submitBtnRef.current) {
-                inspectBlockingElement(submitBtnRef.current)
-              } else {
-                alert("Submit button ref not available.")
-              }
-            } catch (err) {
-              console.warn(err)
-            }
-          }}
-          title="Flash any element blocking the submit button"
-        >
-          Inspect overlay
-        </button>
-
-        <button
-          style={styles.debugBtn}
-          onClick={() => {
-            // force submit bypasses validation — useful to confirm navigation & banner
-            if (!confirm("Force submit will bypass validation and trigger the success flow. Use only for testing.")) return
-            void submitFinal()
-          }}
-          title="Bypass validation and run submit (for testing)"
-        >
-          Force submit
-        </button>
-
-        <button
-          style={{ ...styles.debugBtn, background: "#374151" }}
-          onClick={() => {
-            handleGlobalInspect()
-          }}
-          title="Inspect center of viewport"
-        >
-          Inspect center
-        </button>
       </div>
 
       {/* Debug UI */}
