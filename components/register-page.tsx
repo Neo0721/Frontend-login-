@@ -34,6 +34,13 @@ export default function RegisterPage({ onNavigate, language }: RegisterPageProps
   })
   const [passwordStrength, setPasswordStrength] = useState(0)
 
+  // NEW: errors state for validating mobile, empNo and email
+  const [errors, setErrors] = useState<{
+    mobile?: string
+    empNo?: string
+    email?: string
+  }>({})
+
   const validatePassword = (pwd: string) => {
     const validation = {
       minLength: pwd.length >= 8,
@@ -50,6 +57,51 @@ export default function RegisterPage({ onNavigate, language }: RegisterPageProps
     return Object.values(validation).every(Boolean)
   }
 
+  // NEW: basic email regex for validation (sufficient for typical client-side check)
+  const isValidEmail = (email: string) => {
+    // simple, commonly used client-side regex (not perfect but practical)
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+  }
+
+  // NEW: validate single field and update errors state
+  const validateField = (name: string, value: string) => {
+    setErrors(prev => {
+      const next = { ...prev }
+
+      if (name === "mobile") {
+        // No alphabets allowed and must be digits only; length 10 required to be considered valid
+        if (/\D/.test(value)) {
+          next.mobile = language === "en" ? "Mobile must contain only digits" : "मोबाइल में केवल अंक होने चाहिए"
+        } else if (value.length !== 10 && value.length > 0) {
+          next.mobile = language === "en" ? "Mobile must be exactly 10 digits" : "मोबाइल सही में 10 अंकों का होना चाहिए"
+        } else {
+          delete next.mobile
+        }
+      }
+
+      if (name === "empNo") {
+        // Employee number: disallow alphabetic characters (allow digits only)
+        if (/\D/.test(value)) {
+          next.empNo = language === "en" ? "Employee number must contain only digits" : "कर्मचारी संख्या में केवल अंक होने चाहिए"
+        } else {
+          delete next.empNo
+        }
+      }
+
+      if (name === "email") {
+        if (value.length === 0) {
+          delete next.email
+        } else if (!isValidEmail(value)) {
+          next.email = language === "en" ? "Enter a valid email address" : "मान्य ईमेल पता दर्ज करें"
+        } else {
+          delete next.email
+        }
+      }
+
+      return next
+    })
+  }
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target
     setFormData({
@@ -60,20 +112,56 @@ export default function RegisterPage({ onNavigate, language }: RegisterPageProps
     if (name === "password") {
       validatePassword(value)
     }
+
+    // Run field validation for mobile, empNo, email when changed
+    if (name === "mobile" || name === "empNo" || name === "email") {
+      validateField(name, value)
+    }
   }
 
   const isPasswordValid = Object.values(passwordValidation).every(Boolean)
 
   const handleSubmit = () => {
+    // Re-validate before submit
+    validateField("mobile", formData.mobile)
+    validateField("empNo", formData.empNo)
+    validateField("email", formData.email)
+
+    const hasErrors = Object.keys(errors).length > 0
+
+    // Check mobile length explicitly because user may not have triggered validation message yet
+    const mobileOk = /^\d{10}$/.test(formData.mobile)
+    const empNoOk = /^\d+$/.test(formData.empNo) || formData.empNo.length === 0 ? /^\d+$/.test(formData.empNo) : false
+    const emailOk = isValidEmail(formData.email)
+
     if (
       formData.fullName &&
       formData.empNo &&
       formData.mobile &&
       formData.email &&
       isPasswordValid &&
-      formData.password === formData.confirmPassword
+      formData.password === formData.confirmPassword &&
+      !hasErrors &&
+      mobileOk &&
+      empNoOk &&
+      emailOk
     ) {
       setShowConfirmation(true)
+    } else {
+      // If there are validation failures, ensure errors state reflects them so user sees messages
+      setErrors(prev => {
+        const next = { ...prev }
+        if (!mobileOk) {
+          next.mobile = language === "en" ? "Mobile must be exactly 10 digits and contain only numbers" : "मोबाइल सही में 10 अंकों का होना चाहिए और केवल अंक होने चाहिए"
+        }
+        if (!empNoOk) {
+          next.empNo = language === "en" ? "Employee number must contain only digits" : "कर्मचारी संख्या में केवल अंक होने चाहिए"
+        }
+        if (!emailOk) {
+          next.email = language === "en" ? "Enter a valid email address" : "मान्य ईमेल पता दर्ज करें"
+        }
+        return next
+      })
     }
   }
 
@@ -104,6 +192,12 @@ export default function RegisterPage({ onNavigate, language }: RegisterPageProps
       </div>
     )
   }
+
+  // Determine whether submit button should be disabled (includes errors)
+  const hasValidationErrors = Object.keys(errors).length > 0
+  const mobileIsValidForButton = /^\d{10}$/.test(formData.mobile)
+  const empNoIsValidForButton = /^\d+$/.test(formData.empNo)
+  const emailIsValidForButton = isValidEmail(formData.email)
 
   return (
     <div className="min-h-[calc(100vh-200px)] py-12 px-4">
@@ -153,6 +247,7 @@ export default function RegisterPage({ onNavigate, language }: RegisterPageProps
                   onChange={handleChange}
                   className="w-full"
                 />
+                {errors.empNo && <p className="text-xs text-red-600 mt-2">{errors.empNo}</p>}
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -167,6 +262,7 @@ export default function RegisterPage({ onNavigate, language }: RegisterPageProps
                   maxLength={10}
                   className="w-full"
                 />
+                {errors.mobile && <p className="text-xs text-red-600 mt-2">{errors.mobile}</p>}
               </div>
             </div>
 
@@ -184,6 +280,7 @@ export default function RegisterPage({ onNavigate, language }: RegisterPageProps
                   onChange={handleChange}
                   className="w-full"
                 />
+                {errors.email && <p className="text-xs text-red-600 mt-2">{errors.email}</p>}
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -369,7 +466,11 @@ export default function RegisterPage({ onNavigate, language }: RegisterPageProps
                 !formData.mobile ||
                 !formData.email ||
                 !isPasswordValid ||
-                formData.password !== formData.confirmPassword
+                formData.password !== formData.confirmPassword ||
+                hasValidationErrors ||
+                !mobileIsValidForButton ||
+                !empNoIsValidForButton ||
+                !emailIsValidForButton
               }
               className="w-full bg-[#2E7D32] hover:bg-green-700 text-white mt-8"
             >

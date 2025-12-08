@@ -14,6 +14,11 @@ interface DashboardProps {
   onChangePassword?: () => void
 }
 
+type ApplicationDocument = {
+  name: string
+  url?: string
+}
+
 type Application = {
   id?: string | number
   name?: string
@@ -21,9 +26,11 @@ type Application = {
   department?: string
   dob?: string
   phone?: string
-  documents?: string[]
+  documents?: (string | ApplicationDocument)[]
   status?: string
   submittedAt?: string
+  // included because you reference application.formData
+  formData?: Record<string, any> | null
 }
 
 export default function Dashboard({
@@ -36,13 +43,7 @@ export default function Dashboard({
   const [showIdCardForm, setShowIdCardForm] = useState(false)
   const [hasApplied, setHasApplied] = useState(false)
 
-  // Modal state for viewing application
-  const [isViewOpen, setIsViewOpen] = useState(false)
-  const [loadingView, setLoadingView] = useState(false)
-  const [application, setApplication] = useState<Application | null>(null)
-  const [viewError, setViewError] = useState<string | null>(null)
-
-  // Modal state for viewing application
+  // Modal state for viewing application — one set of state only
   const [isViewOpen, setIsViewOpen] = useState(false)
   const [loadingView, setLoadingView] = useState(false)
   const [application, setApplication] = useState<Application | null>(null)
@@ -237,98 +238,6 @@ export default function Dashboard({
     )
   }
 
-  async function loadApplication(emp = empNo) {
-    setLoadingView(true)
-    setViewError(null)
-    try {
-      // Adjust this API path to your backend endpoint
-      const res = await fetch(`/api/idcard?employee=${encodeURIComponent(emp)}`)
-      if (!res.ok) throw new Error(`Failed to fetch (${res.status})`)
-      const data = await res.json()
-      // normalize or map to Application type as needed
-      setApplication(data || null)
-      // If there is application data, set hasApplied true
-      if (data) setHasApplied(true)
-    } catch (err) {
-      console.warn("Could not fetch application:", err)
-      // Fallback example data so modal still shows something while developing
-      setApplication({
-        id: "example-1",
-        status: "Submitted",
-        name: userName,
-        employeeNo: empNo,
-        department: "Engineering",
-        dob: "1995-03-12",
-        phone: "+91-9876543210",
-        documents: ["Passport (uploaded)", "Address proof (uploaded)"],
-        submittedAt: "2025-12-07T10:15:00Z",
-      })
-      // You can set a friendly message instead of treating this as a hard error:
-      setViewError("Could not fetch live data — showing example data.")
-      setHasApplied(true)
-    } finally {
-      setLoadingView(false)
-    }
-  }
-
-  function openViewModal() {
-    setIsViewOpen(true)
-    loadApplication()
-  }
-
-  function closeViewModal() {
-    setIsViewOpen(false)
-    setViewError(null)
-    // keep application in state for UX; you can clear if you prefer:
-    // setApplication(null)
-  }
-
-  async function loadApplication(emp = empNo) {
-    setLoadingView(true)
-    setViewError(null)
-    try {
-      // Adjust this API path to your backend endpoint
-      const res = await fetch(`/api/idcard?employee=${encodeURIComponent(emp)}`)
-      if (!res.ok) throw new Error(`Failed to fetch (${res.status})`)
-      const data = await res.json()
-      // normalize or map to Application type as needed
-      setApplication(data || null)
-      // If there is application data, set hasApplied true
-      if (data) setHasApplied(true)
-    } catch (err) {
-      console.warn("Could not fetch application:", err)
-      // Fallback example data so modal still shows something while developing
-      setApplication({
-        id: "example-1",
-        status: "Submitted",
-        name: userName,
-        employeeNo: empNo,
-        department: "Engineering",
-        dob: "1995-03-12",
-        phone: "+91-9876543210",
-        documents: ["Passport (uploaded)", "Address proof (uploaded)"],
-        submittedAt: "2025-12-07T10:15:00Z",
-      })
-      // You can set a friendly message instead of treating this as a hard error:
-      setViewError("Could not fetch live data — showing example data.")
-      setHasApplied(true)
-    } finally {
-      setLoadingView(false)
-    }
-  }
-
-  function openViewModal() {
-    setIsViewOpen(true)
-    loadApplication()
-  }
-
-  function closeViewModal() {
-    setIsViewOpen(false)
-    setViewError(null)
-    // keep application in state for UX; you can clear if you prefer:
-    // setApplication(null)
-  }
-
   return (
     <div className="min-h-[calc(100vh-200px)] py-10 px-6 bg-slate-50">
       <div className="max-w-6xl mx-auto">
@@ -378,7 +287,10 @@ export default function Dashboard({
             <div className="w-full flex flex-col gap-3">
               <Button
                 variant="outline"
-                onClick={openViewModal}
+                onClick={() => {
+                  // changed: navigate to preview page
+                  onNavigate?.("preview-idcard")
+                }}
                 className="w-full flex items-center justify-center gap-3 py-3 border-[#002B5C] text-[#002B5C]"
               >
                 {language === "en" ? "View Application" : "आवेदन देखें"}

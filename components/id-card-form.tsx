@@ -18,7 +18,7 @@ type FamilyMember = {
   id: string
   name: string
   relation: string
-  age: string
+  age: string // now a date string (YYYY-MM-DD)
   gender: string
   aadhaar: string
   uniqueIdentificationMark: string
@@ -262,6 +262,7 @@ export default function IdCardForm({
           id: m.id ?? `${Date.now()}-${idx}`,
           name: m.name ?? "",
           relation: m.relation ?? "Spouse",
+          // Accept either date string or older 'age' strings; normalize to YYYY-MM-DD if possible
           age: m.age ?? "",
           gender: m.gender ?? "Male",
           aadhaar: m.aadhaar ?? "",
@@ -356,18 +357,29 @@ export default function IdCardForm({
     if (!formData.designationEn?.trim()) e.designationEn = txt("Designation is required.")
     if (!formData.dateOfAppointment) e.dateOfAppointment = txt("Date of appointment is required.")
     if (!formData.residentialAddress?.trim()) e.residentialAddress = txt("Residential address is required.")
+
+    // Email validation (keeps your existing rule)
     if (!formData.email) {
       e.email = txt("Email is required.")
     } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
       e.email = txt("Enter a valid email.")
     }
+
+    // Mobile: must be exactly 10 digits
     if (!formData.mobileNumber) {
       e.mobileNumber = txt("Mobile number is required.")
     } else if (!/^\d{10}$/.test(formData.mobileNumber)) {
       e.mobileNumber = txt("Enter a valid 10-digit mobile number.")
     }
+
+    // Pin code: must be exactly 6 digits
+    if (!formData.pinCode?.trim()) {
+      e.pinCode = txt("Pin code is required.")
+    } else if (!/^\d{6}$/.test(formData.pinCode.trim())) {
+      e.pinCode = txt("Enter a valid 6-digit pin code.")
+    }
+
     if (!forwardingOfficer) e.forwardingOfficer = txt("Select a forwarding officer.")
-    if (!formData.pinCode?.trim()) e.pinCode = txt("Pin code is required.")
     if (!formData.district?.trim()) e.district = txt("District is required.")
     if (!formData.state?.trim()) e.state = txt("State is required.")
     if (!familyMembers || familyMembers.length === 0) {
@@ -375,7 +387,23 @@ export default function IdCardForm({
     } else {
       const primary = familyMembers[0]
       if (!primary.name?.trim()) e["family.0.name"] = txt("Primary member name is required.")
-      if (!primary.age?.trim()) e["family.0.age"] = txt("Primary member DOB is required.")
+      if (!primary.age?.trim()) {
+        e["family.0.age"] = txt("Primary member DOB is required.")
+      } else {
+        // check valid date (YYYY-MM-DD) and not in the future
+        const dt = new Date(primary.age)
+        if (isNaN(dt.getTime())) {
+          e["family.0.age"] = txt("Enter a valid date for primary member DOB.")
+        } else {
+          const today = new Date()
+          // normalize times to compare only dates
+          const dtNoTime = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate())
+          const todayNoTime = new Date(today.getFullYear(), today.getMonth(), today.getDate())
+          if (dtNoTime > todayNoTime) {
+            e["family.0.age"] = txt("DOB cannot be in the future.")
+          }
+        }
+      }
     }
     setErrors(e)
     return Object.keys(e).length === 0
@@ -498,18 +526,41 @@ export default function IdCardForm({
     }
 
     if (!validate()) {
-      // eslint-disable-next-line no-console
-      console.log("Validation failed", errors)
-      // show a little visual feedback: flash first error field label if exists
-      try {
-        const firstKey = Object.keys(errors)[0]
-        if (firstKey) {
-          console.warn("[IdCardForm] First validation error:", firstKey, errors[firstKey])
-          alert(errors[firstKey])
-        }
-      } catch {}
-      return
+  // eslint-disable-next-line no-console
+  console.log("Validation failed", errors)
+
+  try {
+    const firstKey = Object.keys(errors)[0]
+    if (firstKey) {
+      console.warn("[IdCardForm] First validation error:", firstKey, errors[firstKey])
+
+      // Try to find an element with id equal to the error key
+      const el = document.getElementById(firstKey) as HTMLElement | null
+
+      // Fallback: find any input/textarea/select that has data-field attribute
+      const el2 =
+        el ||
+        document.querySelector(
+          `[data-field="${firstKey}"], input[name="${firstKey}"], textarea[name="${firstKey}"], select[name="${firstKey}"]`
+        ) as HTMLElement | null
+
+      if (el2) {
+        try {
+          el2.scrollIntoView({ behavior: "smooth", block: "center" })
+          // try to focus an input inside (if not focusable directly)
+          const focusable = (el2 as HTMLElement).querySelector ? (el2 as HTMLElement).querySelector("input, textarea, select, button") : null
+          ;(focusable as HTMLElement | null)?.focus?.()
+          ;(el2 as HTMLElement).focus?.()
+        } catch {}
+      }
     }
+  } catch (err) {
+    console.warn("handleSubmit scrolling to error failed", err)
+  }
+
+  return
+}
+
     void submitFinal()
   }
   // ---------- end validation ----------
@@ -791,19 +842,54 @@ export default function IdCardForm({
 
               <div>
                 <RenderLabel text={txt("Email")} required />
-                <Input type="email" className="rounded-xl" value={formData.email} onChange={(e: any) => setFormData((s) => ({ ...s, email: e.target.value }))} required />
+                <Input
+                  id="email"
+                  name="email"
+                  type="email"
+                  className="rounded-xl"
+                  value={formData.email}
+                  onChange={(e: any) => setFormData((s) => ({ ...s, email: e.target.value }))}
+                  required
+                />
                 {errors.email && <div style={styles.errorText}>{errors.email}</div>}
               </div>
 
               <div>
                 <RenderLabel text={txt("Mobile Number")} required />
-                <Input type="tel" className="rounded-xl" value={formData.mobileNumber} onChange={(e: any) => setFormData((s) => ({ ...s, mobileNumber: e.target.value }))} required />
+                <Input
+                  id="mobileNumber"
+                  name="mobileNumber"
+                  type="tel"
+                  className="rounded-xl"
+                  value={formData.mobileNumber}
+                  onChange={(e: any) =>
+                    setFormData((s) => ({
+                      ...s,
+                      mobileNumber: String(e.target.value).replace(/\D/g, "").slice(0, 10),
+                    }))
+                  }
+                  placeholder="Enter 10-digit mobile"
+                  maxLength={10}
+                  required
+                />
                 {errors.mobileNumber && <div style={styles.errorText}>{errors.mobileNumber}</div>}
+
               </div>
 
               <div>
                 <RenderLabel text={txt("Pin Code")} required />
-                <Input className="rounded-xl" value={formData.pinCode} onChange={(e: any) => setFormData((s) => ({ ...s, pinCode: e.target.value }))} required />
+                <Input
+                  id="pinCode"
+                  name="pinCode"
+                  className="rounded-xl"
+                  value={formData.pinCode}
+                  onChange={(e: any) => setFormData((s) => ({ ...s, pinCode: String(e.target.value).replace(/\D/g, "").slice(0, 6) }))}
+                  placeholder="6-digit pin code"
+                  maxLength={6}
+                  required
+                />
+                {errors.pinCode && <div style={styles.errorText}>{errors.pinCode}</div>}
+
               </div>
 
               <div>
@@ -869,8 +955,15 @@ export default function IdCardForm({
                   <div className="grid md:grid-cols-2 gap-6">
                     <div>
                       <RenderLabel text={txt("Full Name")} required={idx === 0} />
-                      <Input value={m.name} onChange={(e: any) => updateFamilyMember(m.id, "name", e.target.value)} placeholder="" />
+                      <Input
+                        id="family.0.name"
+                        name="family.0.name"
+                        value={m.name}
+                        onChange={(e: any) => updateFamilyMember(m.id, "name", e.target.value)}
+                        placeholder=""
+                      />
                       {idx === 0 && errors["family.0.name"] && <div style={styles.errorText}>{errors["family.0.name"]}</div>}
+
                     </div>
 
                     <div>
@@ -887,8 +980,17 @@ export default function IdCardForm({
 
                     <div>
                       <RenderLabel text={txt("Age / Date of Birth")} required={idx === 0} />
-                      <Input placeholder="DD/MM/YYYY" value={m.age} onChange={(e: any) => updateFamilyMember(m.id, "age", e.target.value)} />
+                      {/* replaced text input with date picker */}
+                      <Input
+                        id="family.0.age"
+                        name="family.0.age"
+                        type="date"
+                        placeholder="DD/MM/YYYY"
+                        value={m.age}
+                        onChange={(e: any) => updateFamilyMember(m.id, "age", e.target.value)}
+                      />
                       {idx === 0 && errors["family.0.age"] && <div style={styles.errorText}>{errors["family.0.age"]}</div>}
+
                     </div>
 
                     <div>
@@ -902,7 +1004,7 @@ export default function IdCardForm({
 
                     <div className="md:col-span-2">
                       <RenderLabel text={txt("Aadhaar Number (Optional)")} />
-                      <Input value={m.aadhaar} onChange={(e: any) => updateFamilyMember(m.id, "aadhaar", e.target.value)} placeholder={txt("Optional")} />
+                      <Input value={m.aadhaar} onChange={(e: any) => updateFamilyMember(m.id, "aadhaar", String(e.target.value).replace(/\D/g, "").slice(0, 12))} placeholder={txt("Optional")} />
                     </div>
 
                     <div className="md:col-span-2">
