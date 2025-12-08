@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ArrowLeft, Eye, EyeOff, Check, X } from "lucide-react"
 import { Card } from "@/components/ui/card"
+import ForgotPassword from "./forgot-password"
 
 interface LoginPasswordProps {
   onNavigate: (view: any) => void
@@ -13,6 +14,7 @@ interface LoginPasswordProps {
 
 export default function LoginPassword({ onNavigate, language }: LoginPasswordProps) {
   const [empNo, setEmpNo] = useState("")
+  const [empError, setEmpError] = useState<string | null>(null)
   const [password, setPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
   const [rememberMe, setRememberMe] = useState(false)
@@ -42,10 +44,63 @@ export default function LoginPassword({ onNavigate, language }: LoginPasswordPro
     return Object.values(validation).every(Boolean)
   }
 
-  const handleLogin = () => {
-    if (empNo && password) {
-      onNavigate("dashboard")
+  // --- New emp input helpers ---
+  function sanitizeToDigits(value: string) {
+    return value.replace(/\D/g, "")
+  }
+
+  function handleEmpChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const digitsOnly = sanitizeToDigits(e.target.value)
+    setEmpNo(digitsOnly)
+    if (empError) setEmpError(null)
+  }
+
+  function handleEmpKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    // Allow control keys
+    const allowed = ["Backspace", "Delete", "ArrowLeft", "ArrowRight", "Tab", "Home", "End"]
+    if (allowed.includes(e.key)) return
+
+    // Allow digits only
+    if (!/^[0-9]$/.test(e.key)) {
+      e.preventDefault()
     }
+  }
+
+  function handleEmpPaste(e: React.ClipboardEvent<HTMLInputElement>) {
+    const paste = e.clipboardData.getData("text")
+    const digits = sanitizeToDigits(paste)
+    if (!digits) {
+      e.preventDefault()
+      return
+    }
+    // replace paste with sanitized digits
+    e.preventDefault()
+    // append sanitized digits to current caret position — simplest: set value to current + digits
+    // (for more precise caret handling you could compute selectionStart/End)
+    setEmpNo((prev) => (prev + digits).slice(0, 20)) // optional max length 20
+    if (empError) setEmpError(null)
+  }
+
+  function isEmpValid(value: string) {
+    return value.length > 0 && /^\d+$/.test(value)
+  }
+
+  // --- Login handler updated to enforce numeric empNo ---
+  const handleLogin = () => {
+    // validate empNo
+    if (!isEmpValid(empNo)) {
+      setEmpError(language === "en" ? "Please enter a valid employee number (numbers only)." : "कृपया एक मान्य कर्मचारी संख्या दर्ज करें (केवल अंक)।")
+      return
+    }
+    if (!password) {
+      setEmpError(language === "en" ? "Please enter your password." : "कृपया अपना पासवर्ड दर्ज करें।")
+      return
+    }
+
+    // Clear error and proceed
+    setEmpError(null)
+    // Your navigation or authentication call
+    onNavigate("dashboard")
   }
 
   const isPasswordValid = Object.values(passwordValidation).every(Boolean)
@@ -235,11 +290,17 @@ export default function LoginPassword({ onNavigate, language }: LoginPasswordPro
               </label>
               <Input
                 type="text"
+                inputMode="numeric"
+                pattern="\d*"
                 placeholder={language === "en" ? "Enter employee number" : "कर्मचारी संख्या दर्ज करें"}
                 value={empNo}
-                onChange={(e) => setEmpNo(e.target.value)}
+                onChange={handleEmpChange}
+                onKeyDown={handleEmpKeyDown}
+                onPaste={handleEmpPaste}
                 className="w-full"
+                maxLength={20}
               />
+              {empError && <p className="text-xs text-red-600 mt-2">{empError}</p>}
             </div>
 
             <div>
@@ -258,6 +319,7 @@ export default function LoginPassword({ onNavigate, language }: LoginPasswordPro
                   onClick={() => setShowPassword(!showPassword)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500"
                   aria-label="Toggle password visibility"
+                  type="button"
                 >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
@@ -278,14 +340,19 @@ export default function LoginPassword({ onNavigate, language }: LoginPasswordPro
             </div>
 
             <div className="text-right mb-4">
-              <button onClick={() => setIsChangingPassword(true)} className="text-sm text-[#2E7D32] hover:underline">
-                {language === "en" ? "Change Password?" : "पासवर्ड बदलें?"}
+              <button
+                onClick={() => onNavigate("forgot-password")}
+                className="text-sm text-[#2E7D32] hover:underline"
+                type="button"
+              >
+                {language === "en" ? "Forgot Password?" : "पासवर्ड भूल गए?"}
               </button>
+
             </div>
 
             <Button
               onClick={handleLogin}
-              disabled={!empNo || !password}
+              disabled={!isEmpValid(empNo) || !password}
               className="w-full bg-[#002B5C] hover:bg-blue-900 text-white"
             >
               {language === "en" ? "Sign In" : "साइन इन"}

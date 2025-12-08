@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState } from "react"
+import React, { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { FileText, Lock } from "lucide-react"
@@ -14,21 +14,14 @@ interface DashboardProps {
   onChangePassword?: () => void
 }
 
-type ApplicationDocument = {
-  name: string
-  url?: string // present if file is available on server
-}
-
 type Application = {
   id?: string | number
-  // prefer formData style fields below to match your IdCardForm
-  formData?: Record<string, any>
   name?: string
   employeeNo?: string
   department?: string
   dob?: string
   phone?: string
-  documents?: (string | ApplicationDocument)[]
+  documents?: string[]
   status?: string
   submittedAt?: string
 }
@@ -49,6 +42,12 @@ export default function Dashboard({
   const [application, setApplication] = useState<Application | null>(null)
   const [viewError, setViewError] = useState<string | null>(null)
 
+  // Modal state for viewing application
+  const [isViewOpen, setIsViewOpen] = useState(false)
+  const [loadingView, setLoadingView] = useState(false)
+  const [application, setApplication] = useState<Application | null>(null)
+  const [viewError, setViewError] = useState<string | null>(null)
+
   // show id card form as a full screen modal replacement
   if (showIdCardForm) {
     return (
@@ -56,11 +55,6 @@ export default function Dashboard({
         onNavigate={onNavigate}
         language={language}
         onCancel={() => setShowIdCardForm(false)}
-        onSubmitSuccess={() => {
-          // mark applied so dashboard status updates
-          setHasApplied(true)
-          setShowIdCardForm(false)
-        }}
       />
     )
   }
@@ -241,6 +235,98 @@ export default function Dashboard({
         </button>
       </li>
     )
+  }
+
+  async function loadApplication(emp = empNo) {
+    setLoadingView(true)
+    setViewError(null)
+    try {
+      // Adjust this API path to your backend endpoint
+      const res = await fetch(`/api/idcard?employee=${encodeURIComponent(emp)}`)
+      if (!res.ok) throw new Error(`Failed to fetch (${res.status})`)
+      const data = await res.json()
+      // normalize or map to Application type as needed
+      setApplication(data || null)
+      // If there is application data, set hasApplied true
+      if (data) setHasApplied(true)
+    } catch (err) {
+      console.warn("Could not fetch application:", err)
+      // Fallback example data so modal still shows something while developing
+      setApplication({
+        id: "example-1",
+        status: "Submitted",
+        name: userName,
+        employeeNo: empNo,
+        department: "Engineering",
+        dob: "1995-03-12",
+        phone: "+91-9876543210",
+        documents: ["Passport (uploaded)", "Address proof (uploaded)"],
+        submittedAt: "2025-12-07T10:15:00Z",
+      })
+      // You can set a friendly message instead of treating this as a hard error:
+      setViewError("Could not fetch live data — showing example data.")
+      setHasApplied(true)
+    } finally {
+      setLoadingView(false)
+    }
+  }
+
+  function openViewModal() {
+    setIsViewOpen(true)
+    loadApplication()
+  }
+
+  function closeViewModal() {
+    setIsViewOpen(false)
+    setViewError(null)
+    // keep application in state for UX; you can clear if you prefer:
+    // setApplication(null)
+  }
+
+  async function loadApplication(emp = empNo) {
+    setLoadingView(true)
+    setViewError(null)
+    try {
+      // Adjust this API path to your backend endpoint
+      const res = await fetch(`/api/idcard?employee=${encodeURIComponent(emp)}`)
+      if (!res.ok) throw new Error(`Failed to fetch (${res.status})`)
+      const data = await res.json()
+      // normalize or map to Application type as needed
+      setApplication(data || null)
+      // If there is application data, set hasApplied true
+      if (data) setHasApplied(true)
+    } catch (err) {
+      console.warn("Could not fetch application:", err)
+      // Fallback example data so modal still shows something while developing
+      setApplication({
+        id: "example-1",
+        status: "Submitted",
+        name: userName,
+        employeeNo: empNo,
+        department: "Engineering",
+        dob: "1995-03-12",
+        phone: "+91-9876543210",
+        documents: ["Passport (uploaded)", "Address proof (uploaded)"],
+        submittedAt: "2025-12-07T10:15:00Z",
+      })
+      // You can set a friendly message instead of treating this as a hard error:
+      setViewError("Could not fetch live data — showing example data.")
+      setHasApplied(true)
+    } finally {
+      setLoadingView(false)
+    }
+  }
+
+  function openViewModal() {
+    setIsViewOpen(true)
+    loadApplication()
+  }
+
+  function closeViewModal() {
+    setIsViewOpen(false)
+    setViewError(null)
+    // keep application in state for UX; you can clear if you prefer:
+    // setApplication(null)
   }
 
   return (
