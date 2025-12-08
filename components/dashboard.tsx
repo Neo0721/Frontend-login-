@@ -2,10 +2,11 @@
 
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { FileText, User, Lock } from "lucide-react"
-import { useState } from "react"
+import { FileText, Lock, Edit } from "lucide-react"
+import { useEffect, useState } from "react"
 import IdCardForm from "@/components/id-card-form"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { useRouter } from "next/navigation"
 
 interface DashboardProps {
   onNavigate: (view: any) => void
@@ -22,16 +23,99 @@ export default function Dashboard({
   empNo = "EMP001",
   onChangePassword,
 }: DashboardProps) {
+  const router = useRouter()
   const [showIdCardForm, setShowIdCardForm] = useState(false)
   const [hasApplied, setHasApplied] = useState(false)
+
+  // draft state (to control Update ID Card button)
+  const [checkingDraft, setCheckingDraft] = useState(true)
+  const [hasDraft, setHasDraft] = useState(false)
+  const [draftId, setDraftId] = useState<string | null>(null)
+
+  useEffect(() => {
+    // Check localStorage first (useful while DB isn't connected).
+    // If nothing in localStorage, try server API as fallback (if/when you add it).
+    let mounted = true
+
+    async function checkDraft() {
+      setCheckingDraft(true)
+
+      try {
+        if (typeof window !== "undefined") {
+          const raw = localStorage.getItem("idcardDraft")
+          if (raw) {
+            try {
+              const draft = JSON.parse(raw)
+              if (mounted) {
+                if (draft && draft.id) {
+                  setHasDraft(true)
+                  setDraftId(String(draft.id))
+                  setCheckingDraft(false)
+                  return
+                } else {
+                  setHasDraft(false)
+                  setDraftId(null)
+                }
+              }
+            } catch (err) {
+              console.error("Error parsing local idcardDraft", err)
+              // fallthrough to server check
+            }
+          }
+        }
+
+        // Fallback: if no local draft, attempt to call server API (works after you add DB)
+        try {
+          const res = await fetch("/api/idcard/draft")
+          if (!mounted) return
+          if (!res.ok) {
+            setHasDraft(false)
+            setDraftId(null)
+          } else {
+            const json = await res.json()
+            setHasDraft(Boolean(json.hasDraft))
+            setDraftId(json.draftId ?? null)
+          }
+        } catch (err) {
+          console.error("Failed to check draft via API:", err)
+          if (mounted) {
+            setHasDraft(false)
+            setDraftId(null)
+          }
+        }
+      } catch (err) {
+        console.error("Unexpected error while checking draft:", err)
+        if (mounted) {
+          setHasDraft(false)
+          setDraftId(null)
+        }
+      } finally {
+        if (mounted) setCheckingDraft(false)
+      }
+    }
+
+    checkDraft()
+    return () => {
+      mounted = false
+    }
+  }, [])
 
   if (showIdCardForm) {
     return <IdCardForm onNavigate={onNavigate} language={language} onCancel={() => setShowIdCardForm(false)} />
   }
 
+  const handleApplyClick = () => {
+    setShowIdCardForm(true)
+  }
+
+  const handleUpdateClick = () => {
+    if (!hasDraft || !draftId) return
+    // navigate to edit page. adjust route if your route differs
+    router.push(`/idcard/edit/${draftId}`)
+  }
+
   return (
     <div className="min-h-[calc(100vh-200px)] py-8 px-4">
-      
       <div className="max-w-7xl mx-auto">
         <div className="text-center mb-12">
           <h1 className="text-3xl font-bold text-[#002B5C] mb-6">{language === "en" ? "Dashboard" : "डैशबोर्ड"}</h1>
@@ -39,7 +123,7 @@ export default function Dashboard({
           <div className="flex flex-wrap justify-center gap-3 mb-8">
             {!hasApplied && (
               <Button
-                onClick={() => setShowIdCardForm(true)}
+                onClick={handleApplyClick}
                 className="bg-[#2E7D32] hover:bg-green-700 text-white flex items-center gap-2"
               >
                 <FileText className="w-4 h-4" />
@@ -53,14 +137,30 @@ export default function Dashboard({
               </Button>
             )}
 
-            {/* ← Fixed: My Profile now navigates using onNavigate */}
+            {/* REPLACED: My Profile -> Update ID Card */}
             <Button
               variant="outline"
-              className="text-[#002B5C] border-[#002B5C] flex items-center gap-2 bg-transparent"
-              onClick={() => onNavigate?.("profile")}
+              onClick={handleUpdateClick}
+              disabled={checkingDraft || !hasDraft}
+              title={
+                checkingDraft
+                  ? language === "en"
+                    ? "Checking for saved draft..."
+                    : "सहेजे गए ड्राफ्ट की जाँच की जा रही है..."
+                  : hasDraft
+                  ? language === "en"
+                    ? "Edit your saved draft"
+                    : "सहेजे गए ड्राफ्ट को संपादित करें"
+                  : language === "en"
+                  ? "No saved draft to update"
+                  : "अपडेट करने के लिए कोई सहेजा गया ड्राफ्ट नहीं है"
+              }
+              className={`text-[#002B5C] border-[#002B5C] flex items-center gap-2 bg-transparent ${
+                checkingDraft || !hasDraft ? "cursor-not-allowed opacity-70" : ""
+              }`}
             >
-              <User className="w-4 h-4" />
-              {language === "en" ? "My Profile" : "मेरी प्रोफाइल"}
+              <Edit className="w-4 h-4" />
+              {language === "en" ? "Update ID Card" : "आईडी कार्ड अपडेट करें"}
             </Button>
 
             {/* Change Password: use handler if provided, fall back to navigation */}

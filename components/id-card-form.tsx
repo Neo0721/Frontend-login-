@@ -1,14 +1,16 @@
 "use client"
 
-import React, { useState } from "react"
-import Link from "next/link"
+import React, { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
 import { ChevronDown, ChevronUp, X, Upload, AlertCircle, Plus } from "lucide-react"
 import { Input } from "@/components/ui/input"
 
 interface IdCardFormProps {
-  onNavigate: (view: any) => void
+  onNavigate?: (view?: any) => void
   language: "en" | "hi"
   onCancel?: () => void
+  initialData?: any
+  mode?: "edit" | "create"
 }
 
 type FamilyMember = {
@@ -19,10 +21,23 @@ type FamilyMember = {
   gender: string
   aadhaar: string
   uniqueIdentificationMark: string
-  doc: File | null
+  doc: File | { name: string } | null
 }
 
-export default function IdCardForm({ onNavigate, language }: IdCardFormProps) {
+type UploadedFileMeta = {
+  name: string
+  size: number
+  type: string
+}
+
+export default function IdCardForm({
+  onNavigate,
+  language,
+  onCancel,
+  initialData = null,
+  mode = "create",
+}: IdCardFormProps) {
+  const router = useRouter()
   const txt = (en: string, hi?: string) => (language === "en" ? en : hi ?? en)
 
   const [expanded, setExpanded] = useState<Record<string, boolean>>({
@@ -37,7 +52,11 @@ export default function IdCardForm({ onNavigate, language }: IdCardFormProps) {
   const toggle = (id: string) => setExpanded((s) => ({ ...s, [id]: !s[id] }))
 
   const documentCategories = [
-    { id: "A", title: txt("A. New Appointment / Transfer"), docs: [txt("Memorandum / Transfer Letter Copy"), txt("Charge Report Copy"), txt("Current Address Proof Copy")] },
+    {
+      id: "A",
+      title: txt("A. New Appointment / Transfer"),
+      docs: [txt("Memorandum / Transfer Letter Copy"), txt("Charge Report Copy"), txt("Current Address Proof Copy")],
+    },
     { id: "B", title: txt("B. Promotion"), docs: [txt("Promotion Order Copy")] },
     { id: "C", title: txt("C. Lost Identity Card"), docs: [txt("Police FIR/NRIC")] },
     { id: "D", title: txt("D. Damage Card"), docs: [txt("Damaged Card + Report")] },
@@ -45,7 +64,9 @@ export default function IdCardForm({ onNavigate, language }: IdCardFormProps) {
     { id: "F", title: txt("F. Correction"), docs: [txt("Supporting Documents for Correction")] },
   ]
 
+  // state
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([])
+  const [uploadedFilesMeta, setUploadedFilesMeta] = useState<UploadedFileMeta[]>([])
   const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>([
     {
       id: `${Date.now()}-0`,
@@ -59,7 +80,6 @@ export default function IdCardForm({ onNavigate, language }: IdCardFormProps) {
     },
   ])
   const [forwardingOfficer, setForwardingOfficer] = useState("")
-
   const [formData, setFormData] = useState({
     purpose: "",
     department: "",
@@ -81,23 +101,211 @@ export default function IdCardForm({ onNavigate, language }: IdCardFormProps) {
     state: "",
     idCardNo: "",
   })
-
-  // moved errors state INSIDE the component (was incorrectly placed at top-level earlier)
   const [errors, setErrors] = useState<Record<string, string>>({})
+
+  // debug UI
+  const [debugAttempts, setDebugAttempts] = useState<string[]>([])
+  const pushDebug = (msg: string) => {
+    try {
+      // log to console too
+      // eslint-disable-next-line no-console
+      console.log("[IdCardForm]", msg)
+    } catch {}
+    setDebugAttempts((p) => [...p, msg])
+  }
+
+  // ---------- robust back handler ----------
+  const probeCandidatesAndNavigate = async (candidates: string[]) => {
+    if (typeof window === "undefined") return false
+    for (const p of candidates) {
+      try {
+        const url = new URL(p, window.location.origin).toString()
+        // try HEAD first
+        try {
+          const res = await fetch(url, { method: "HEAD" })
+          if (res.ok) {
+            pushDebug(`probe: HEAD OK -> ${p}`)
+            await router.replace(url)
+            return true
+          }
+          pushDebug(`probe: HEAD not ok (${res.status}) -> ${p}`)
+        } catch (headErr) {
+          // HEAD not allowed — try GET
+          try {
+            const resGet = await fetch(url, { method: "GET" })
+            if (resGet.ok) {
+              pushDebug(`probe: GET OK -> ${p}`)
+              await router.replace(url)
+              return true
+            }
+            pushDebug(`probe: GET not ok (${resGet.status}) -> ${p}`)
+          } catch (getErr) {
+            pushDebug(`probe: fetch GET error -> ${p} (${String(getErr)})`)
+          }
+        }
+      } catch (err) {
+        pushDebug(`probe: invalid url -> ${p} (${String(err)})`)
+      }
+    }
+    return false
+  }
+
+  const handleBack = async () => {
+    setDebugAttempts([])
+    pushDebug("Back clicked")
+
+    // 1) prefer parent onCancel
+    if (typeof onCancel === "function") {
+      try {
+        pushDebug("Attempting onCancel()")
+        onCancel()
+        pushDebug("onCancel() invoked")
+        return
+      } catch (err: any) {
+        pushDebug(`onCancel threw: ${String(err)}`)
+      }
+    }
+
+    // 2) prefer parent's onNavigate
+    if (typeof onNavigate === "function") {
+      try {
+        pushDebug('Attempting onNavigate("dashboard")')
+        onNavigate("dashboard")
+        pushDebug('onNavigate("dashboard") invoked')
+        return
+      } catch (err: any) {
+        pushDebug(`onNavigate threw: ${String(err)}`)
+      }
+    }
+
+    // 3) try same-origin referrer
+    try {
+      if (typeof document !== "undefined" && document.referrer) {
+        try {
+          const ref = new URL(document.referrer)
+          const origin = typeof window !== "undefined" ? window.location.origin : null
+          if (origin && ref.origin === origin) {
+            pushDebug(`Navigating to document.referrer: ${document.referrer}`)
+            window.location.href = document.referrer
+            return
+          } else {
+            pushDebug(`Referrer present but cross-origin or unknown: ${document.referrer}`)
+          }
+        } catch (parseErr) {
+          pushDebug(`Failed parsing referrer: ${String(parseErr)}`)
+        }
+      } else {
+        pushDebug("No document.referrer available")
+      }
+    } catch (err: any) {
+      pushDebug(`Referrer check error: ${String(err)}`)
+    }
+
+    // 4) try native history.back()
+    try {
+      if (typeof window !== "undefined" && window.history && window.history.length > 1) {
+        pushDebug("Calling window.history.back()")
+        window.history.back()
+        // wait briefly to let history act
+        await new Promise((res) => setTimeout(res, 600))
+        pushDebug("history.back() attempted")
+      } else {
+        pushDebug("history.length <= 1 or history missing; skipping history.back()")
+      }
+    } catch (err: any) {
+      pushDebug(`history.back() threw: ${String(err)}`)
+    }
+
+    // 5) probe likely dashboard routes
+    const candidates = [
+      "/dashboard",
+      "/home",
+      "/app/dashboard",
+      "/(private)/dashboard",
+      "/user/dashboard",
+      "/portal/dashboard",
+      "/",
+    ]
+    const found = await probeCandidatesAndNavigate(candidates)
+    if (found) return
+
+    // 6) final hard redirect to root
+    try {
+      pushDebug("Final fallback -> routing to /")
+      await router.replace("/")
+    } catch (err: any) {
+      pushDebug(`router.replace("/") threw: ${String(err)}; doing hard window.location.href = "/"`)
+      try {
+        if (typeof window !== "undefined") window.location.href = "/"
+      } catch (finalErr: any) {
+        pushDebug(`Final hard redirect failed: ${String(finalErr)}`)
+      }
+    }
+    pushDebug("Back handling complete")
+  }
+  // ----------------------------------------
+
+  // ---------- hydration for initialData / draft ----------
+  useEffect(() => {
+    const loadFromSource = (d: any) => {
+      if (!d) return
+      if (d.formData) setFormData((s) => ({ ...s, ...(d.formData ?? {}) }))
+      if (Array.isArray(d.familyMembers) && d.familyMembers.length > 0) {
+        const members: FamilyMember[] = d.familyMembers.map((m: any, idx: number) => ({
+          id: m.id ?? `${Date.now()}-${idx}`,
+          name: m.name ?? "",
+          relation: m.relation ?? "Spouse",
+          age: m.age ?? "",
+          gender: m.gender ?? "Male",
+          aadhaar: m.aadhaar ?? "",
+          uniqueIdentificationMark: m.uniqueIdentificationMark ?? "",
+          doc: m.doc ? { name: m.doc.name ?? String(m.doc) } : null,
+        }))
+        setFamilyMembers(members)
+      }
+      if (Array.isArray(d.uploadedFilesMeta)) setUploadedFilesMeta(d.uploadedFilesMeta)
+      if (d.forwardingOfficer) setForwardingOfficer(d.forwardingOfficer)
+    }
+
+    if (initialData) {
+      loadFromSource(initialData)
+      return
+    }
+
+    try {
+      const raw = localStorage.getItem("idcardDraft")
+      if (!raw) return
+      const draft = JSON.parse(raw)
+      if (draft) loadFromSource(draft)
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("Error loading draft from localStorage:", err)
+    }
+  }, [initialData])
+  // ---------------------------------------------------------------------
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.currentTarget.files
     if (!files) return
     const maxSize = 5 * 1024 * 1024
     const valid: File[] = []
+    const meta: UploadedFileMeta[] = []
     for (let i = 0; i < files.length; i++) {
       const f = files[i]
-      if (f.size <= maxSize) valid.push(f)
+      if (f.size <= maxSize) {
+        valid.push(f)
+        meta.push({ name: f.name, size: f.size, type: f.type })
+      }
     }
     setUploadedFiles((p) => [...p, ...valid])
+    setUploadedFilesMeta((p) => [...p, ...meta])
+    if (e.currentTarget) e.currentTarget.value = ""
   }
 
-  const removeFile = (index: number) => setUploadedFiles((p) => p.filter((_, i) => i !== index))
+  const removeFile = (index: number) => {
+    setUploadedFiles((p) => p.filter((_, i) => i !== index))
+    setUploadedFilesMeta((p) => p.filter((_, i) => i !== index))
+  }
 
   const addFamilyMember = () =>
     setFamilyMembers((p) => [
@@ -114,7 +322,6 @@ export default function IdCardForm({ onNavigate, language }: IdCardFormProps) {
       },
     ])
 
-  // Prevent removing the last member; also protect first (primary) member.
   const removeFamilyMember = (id: string) =>
     setFamilyMembers((p) => {
       if (p.length === 1) {
@@ -135,8 +342,6 @@ export default function IdCardForm({ onNavigate, language }: IdCardFormProps) {
   // ---------- Validation ----------
   const validate = () => {
     const e: Record<string, string> = {}
-
-    // basic required fields
     if (!formData.purpose) e.purpose = txt("Purpose is required.")
     if (!formData.department) e.department = txt("Department is required.")
     if (!formData.unit?.trim()) e.unit = txt("Unit is required.")
@@ -144,24 +349,17 @@ export default function IdCardForm({ onNavigate, language }: IdCardFormProps) {
     if (!formData.designationEn?.trim()) e.designationEn = txt("Designation is required.")
     if (!formData.dateOfAppointment) e.dateOfAppointment = txt("Date of appointment is required.")
     if (!formData.residentialAddress?.trim()) e.residentialAddress = txt("Residential address is required.")
-
-    // email format
     if (!formData.email) {
       e.email = txt("Email is required.")
     } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
       e.email = txt("Enter a valid email.")
     }
-
-    // mobile number basic check (10 digits)
     if (!formData.mobileNumber) {
       e.mobileNumber = txt("Mobile number is required.")
     } else if (!/^\d{10}$/.test(formData.mobileNumber)) {
       e.mobileNumber = txt("Enter a valid 10-digit mobile number.")
     }
-
     if (!forwardingOfficer) e.forwardingOfficer = txt("Select a forwarding officer.")
-
-    // family validation: must have at least one; primary member must have name and age
     if (!familyMembers || familyMembers.length === 0) {
       e.family = txt("Add at least one family member.")
     } else {
@@ -169,27 +367,82 @@ export default function IdCardForm({ onNavigate, language }: IdCardFormProps) {
       if (!primary.name?.trim()) e["family.0.name"] = txt("Primary member name is required.")
       if (!primary.age?.trim()) e["family.0.age"] = txt("Primary member DOB is required.")
     }
-
     setErrors(e)
     return Object.keys(e).length === 0
   }
 
+  const submitFinal = () => {
+    try {
+      localStorage.removeItem("idcardDraft")
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn("Failed to remove draft from localStorage", err)
+    }
+    alert(txt("Application submitted"))
+    try {
+      onNavigate?.("application-status")
+    } catch {
+      router.replace("/")
+    }
+  }
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-
     if (!validate()) {
-      // focus/scroll to first error could be added here
+      // eslint-disable-next-line no-console
       console.log("Validation failed", errors)
       return
     }
-
-    // passed validation -> continue
-    alert(txt("Application submitted"))
-    onNavigate?.("application-status")
+    submitFinal()
   }
   // ---------- end validation ----------
 
-  // Inline style fallbacks to match the screenshots' look.
+  const genId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
+
+  const buildPersistableFamily = (members: FamilyMember[]) =>
+    members.map((m) => ({
+      id: m.id,
+      name: m.name,
+      relation: m.relation,
+      age: m.age,
+      gender: m.gender,
+      aadhaar: m.aadhaar,
+      uniqueIdentificationMark: m.uniqueIdentificationMark,
+      doc: m.doc ? (m.doc instanceof File ? { name: m.doc.name } : { name: (m.doc as any).name ?? String(m.doc) }) : null,
+    }))
+
+  const saveDraft = (): string | null => {
+    try {
+      const existingRaw = localStorage.getItem("idcardDraft")
+      let existingId: string | null = null
+      if (mode === "edit" && initialData && initialData.id) existingId = initialData.id
+      else if (existingRaw) {
+        try {
+          const parsed = JSON.parse(existingRaw)
+          if (parsed && parsed.id) existingId = parsed.id
+        } catch {}
+      }
+      const id = existingId ?? genId()
+      const draft = {
+        id,
+        formData,
+        familyMembers: buildPersistableFamily(familyMembers),
+        uploadedFilesMeta,
+        forwardingOfficer,
+        updatedAt: new Date().toISOString(),
+      }
+      localStorage.setItem("idcardDraft", JSON.stringify(draft))
+      alert(txt("Draft saved"))
+      return id
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("Failed saving draft", err)
+      alert(txt("Failed to save draft"))
+      return null
+    }
+  }
+
+  // inline styles (kept same as original)
   const styles = {
     inputWrap: { borderRadius: 10, padding: 14, background: "transparent" } as React.CSSProperties,
     label: { display: "block", marginBottom: 8, color: "var(--text-dark)", fontWeight: 500 } as React.CSSProperties,
@@ -202,14 +455,33 @@ export default function IdCardForm({ onNavigate, language }: IdCardFormProps) {
       textAlign: "center",
     } as React.CSSProperties,
     errorText: { color: "#d32f2f", marginTop: 6, fontSize: 13 },
+    debugBox: {
+      position: "fixed",
+      right: 16,
+      bottom: 16,
+      width: 360,
+      maxHeight: 280,
+      overflow: "auto",
+      background: "rgba(0,0,0,0.8)",
+      color: "white",
+      padding: 12,
+      borderRadius: 8,
+      fontSize: 12,
+      zIndex: 9999,
+    } as React.CSSProperties,
   }
 
   return (
     <main className="min-h-screen py-8" style={{ background: "var(--page-bg, #fafafa)" }}>
       <div className="max-w-6xl mx-auto px-6">
-        <Link href="/dashboard" className="text-green-700 font-semibold inline-flex items-center mb-6">
+        <button
+          type="button"
+          onClick={handleBack}
+          className="text-green-700 font-semibold inline-flex items-center mb-6"
+          style={{ background: "transparent", border: "none", padding: 0, cursor: "pointer" }}
+        >
           ← {txt("Back")}
-        </Link>
+        </button>
 
         <div className="card-elevated rounded-2xl p-8" style={{ background: "white" }}>
           <h1 className="heading-lg mb-6" style={{ fontSize: 28, fontWeight: 700, color: "#0b3355" }}>
@@ -270,6 +542,7 @@ export default function IdCardForm({ onNavigate, language }: IdCardFormProps) {
           <h3 style={{ ...styles.sectionHeading }}>{txt("SECTION B – APPLICATION FORM")}</h3>
 
           <form onSubmit={handleSubmit} className="mt-6 space-y-6">
+            {/* form fields unchanged */}
             <div className="grid md:grid-cols-2 gap-6">
               <div>
                 <label style={styles.label}>{txt("Purpose of Making ID Card")}</label>
@@ -306,177 +579,92 @@ export default function IdCardForm({ onNavigate, language }: IdCardFormProps) {
 
               <div>
                 <label style={styles.label}>{txt("Unit")}</label>
-                <Input
-                  className="rounded-xl"
-                  value={formData.unit}
-                  onChange={(e: any) => setFormData((s) => ({ ...s, unit: e.target.value }))}
-                  required
-                />
+                <Input className="rounded-xl" value={formData.unit} onChange={(e: any) => setFormData((s) => ({ ...s, unit: e.target.value }))} required />
                 {errors.unit && <div style={styles.errorText}>{errors.unit}</div>}
               </div>
 
               <div>
                 <label style={styles.label}>{txt("Employee Name (English)")}</label>
-                <Input
-                  className="rounded-xl"
-                  value={formData.employeeNameEn}
-                  onChange={(e: any) => setFormData((s) => ({ ...s, employeeNameEn: e.target.value }))}
-                  required
-                />
+                <Input className="rounded-xl" value={formData.employeeNameEn} onChange={(e: any) => setFormData((s) => ({ ...s, employeeNameEn: e.target.value }))} required />
                 {errors.employeeNameEn && <div style={styles.errorText}>{errors.employeeNameEn}</div>}
               </div>
 
               {language === "hi" && (
                 <div>
                   <label style={styles.label}>{txt("Employee Name (Hindi)")}</label>
-                  <Input
-                    className="rounded-xl"
-                    value={formData.employeeNameHi}
-                    onChange={(e: any) => setFormData((s) => ({ ...s, employeeNameHi: e.target.value }))}
-                  />
+                  <Input className="rounded-xl" value={formData.employeeNameHi} onChange={(e: any) => setFormData((s) => ({ ...s, employeeNameHi: e.target.value }))} />
                 </div>
               )}
 
               <div>
                 <label style={styles.label}>{txt("Designation (English)")}</label>
-                <Input
-                  className="rounded-xl"
-                  value={formData.designationEn}
-                  onChange={(e: any) => setFormData((s) => ({ ...s, designationEn: e.target.value }))}
-                  required
-                />
+                <Input className="rounded-xl" value={formData.designationEn} onChange={(e: any) => setFormData((s) => ({ ...s, designationEn: e.target.value }))} required />
                 {errors.designationEn && <div style={styles.errorText}>{errors.designationEn}</div>}
               </div>
 
               <div>
                 <label style={styles.label}>{txt("Date of Appointment")}</label>
-                <Input
-                  type="date"
-                  className="rounded-xl"
-                  value={formData.dateOfAppointment}
-                  onChange={(e: any) => setFormData((s) => ({ ...s, dateOfAppointment: e.target.value }))}
-                  required
-                />
+                <Input type="date" className="rounded-xl" value={formData.dateOfAppointment} onChange={(e: any) => setFormData((s) => ({ ...s, dateOfAppointment: e.target.value }))} required />
                 {errors.dateOfAppointment && <div style={styles.errorText}>{errors.dateOfAppointment}</div>}
               </div>
 
               <div>
                 <label style={styles.label}>{txt("Nearest RH/HU")}</label>
-                <Input
-                  className="rounded-xl"
-                  value={formData.nearestRH}
-                  onChange={(e: any) => setFormData((s) => ({ ...s, nearestRH: e.target.value }))}
-                  required
-                />
+                <Input className="rounded-xl" value={formData.nearestRH} onChange={(e: any) => setFormData((s) => ({ ...s, nearestRH: e.target.value }))} required />
               </div>
 
               <div>
                 <label style={styles.label}>{txt("Place of Work")}</label>
-                <Input
-                  className="rounded-xl"
-                  value={formData.placeOfWork}
-                  onChange={(e: any) => setFormData((s) => ({ ...s, placeOfWork: e.target.value }))}
-                  required
-                />
+                <Input className="rounded-xl" value={formData.placeOfWork} onChange={(e: any) => setFormData((s) => ({ ...s, placeOfWork: e.target.value }))} required />
               </div>
 
               <div>
                 <label style={styles.label}>{txt("Pay Level")}</label>
-                <Input
-                  className="rounded-xl"
-                  value={formData.payLevel}
-                  onChange={(e: any) => setFormData((s) => ({ ...s, payLevel: e.target.value }))}
-                  required
-                />
+                <Input className="rounded-xl" value={formData.payLevel} onChange={(e: any) => setFormData((s) => ({ ...s, payLevel: e.target.value }))} required />
               </div>
 
               <div>
                 <label style={styles.label}>{txt("Email")}</label>
-                <Input
-                  type="email"
-                  className="rounded-xl"
-                  value={formData.email}
-                  onChange={(e: any) => setFormData((s) => ({ ...s, email: e.target.value }))}
-                  required
-                />
+                <Input type="email" className="rounded-xl" value={formData.email} onChange={(e: any) => setFormData((s) => ({ ...s, email: e.target.value }))} required />
                 {errors.email && <div style={styles.errorText}>{errors.email}</div>}
               </div>
 
               <div>
                 <label style={styles.label}>{txt("Mobile Number")}</label>
-                <Input
-                  type="tel"
-                  className="rounded-xl"
-                  value={formData.mobileNumber}
-                  onChange={(e: any) => setFormData((s) => ({ ...s, mobileNumber: e.target.value }))}
-                  required
-                />
+                <Input type="tel" className="rounded-xl" value={formData.mobileNumber} onChange={(e: any) => setFormData((s) => ({ ...s, mobileNumber: e.target.value }))} required />
                 {errors.mobileNumber && <div style={styles.errorText}>{errors.mobileNumber}</div>}
               </div>
 
               <div>
                 <label style={styles.label}>{txt("Pin Code")}</label>
-                <Input
-                  className="rounded-xl"
-                  value={formData.pinCode}
-                  onChange={(e: any) => setFormData((s) => ({ ...s, pinCode: e.target.value }))}
-                  required
-                />
+                <Input className="rounded-xl" value={formData.pinCode} onChange={(e: any) => setFormData((s) => ({ ...s, pinCode: e.target.value }))} required />
               </div>
 
               <div>
                 <label style={styles.label}>{txt("District")}</label>
-                <Input
-                  className="rounded-xl"
-                  value={formData.district}
-                  onChange={(e: any) => setFormData((s) => ({ ...s, district: e.target.value }))}
-                  required
-                />
+                <Input className="rounded-xl" value={formData.district} onChange={(e: any) => setFormData((s) => ({ ...s, district: e.target.value }))} required />
               </div>
 
               <div>
                 <label style={styles.label}>{txt("State")}</label>
-                <Input
-                  className="rounded-xl"
-                  value={formData.state}
-                  onChange={(e: any) => setFormData((s) => ({ ...s, state: e.target.value }))}
-                  required
-                />
+                <Input className="rounded-xl" value={formData.state} onChange={(e: any) => setFormData((s) => ({ ...s, state: e.target.value }))} required />
               </div>
 
               <div>
                 <label style={styles.label}>{txt("ID Card No (if applicable)")}</label>
-                <Input
-                  className="rounded-xl"
-                  value={formData.idCardNo}
-                  onChange={(e: any) => setFormData((s) => ({ ...s, idCardNo: e.target.value }))}
-                />
+                <Input className="rounded-xl" value={formData.idCardNo} onChange={(e: any) => setFormData((s) => ({ ...s, idCardNo: e.target.value }))} />
               </div>
             </div>
 
             <div>
               <label style={styles.label}>{txt("Residential Address")}</label>
-              <textarea
-                value={formData.residentialAddress}
-                onChange={(e) => setFormData((s) => ({ ...s, residentialAddress: e.target.value }))}
-                className="w-full rounded-xl p-4"
-                style={{ minHeight: 120, border: "1px solid #e6e6e6" }}
-                required
-              />
+              <textarea value={formData.residentialAddress} onChange={(e) => setFormData((s) => ({ ...s, residentialAddress: e.target.value }))} className="w-full rounded-xl p-4" style={{ minHeight: 120, border: "1px solid #e6e6e6" }} required />
               {errors.residentialAddress && <div style={styles.errorText}>{errors.residentialAddress}</div>}
             </div>
 
-            {/* NEW FIELD: Unique Identification Mark for employee */}
             <div>
               <label style={styles.label}>{txt("Unique Identification Mark")}</label>
-              <Input
-                className="rounded-xl"
-                value={formData.uniqueIdentificationMark}
-                onChange={(e: any) =>
-                  setFormData((s) => ({ ...s, uniqueIdentificationMark: e.target.value }))
-                }
-                placeholder={txt("Optional")}
-              />
+              <Input className="rounded-xl" value={formData.uniqueIdentificationMark} onChange={(e: any) => setFormData((s) => ({ ...s, uniqueIdentificationMark: e.target.value }))} placeholder={txt("Optional")} />
             </div>
 
             <div>
@@ -485,39 +673,17 @@ export default function IdCardForm({ onNavigate, language }: IdCardFormProps) {
                 <Upload className="mx-auto" style={{ width: 36, height: 36, color: "#2e7d32" }} />
                 <div style={{ fontWeight: 700, marginTop: 8 }}>{txt("Upload Documents")}</div>
                 <div style={{ color: "#6b7280", marginTop: 2 }}>PDF, JPG, PNG (Max 5 MB each)</div>
-                <input
-                  id="uploadFiles"
-                  type="file"
-                  multiple
-                  accept=".pdf,.jpg,.jpeg,.png"
-                  onChange={handleFileUpload}
-                  style={{ display: "none" }}
-                />
-                <label
-                  htmlFor="uploadFiles"
-                  style={{ display: "block", marginTop: 8, cursor: "pointer", color: "#2e7d32" }}
-                >
+                <input id="uploadFiles" type="file" multiple accept=".pdf,.jpg,.jpeg,.png" onChange={handleFileUpload} style={{ display: "none" }} />
+                <label htmlFor="uploadFiles" style={{ display: "block", marginTop: 8, cursor: "pointer", color: "#2e7d32" }}>
                   {txt("Click to upload or drag files here")}
                 </label>
               </div>
 
-              {uploadedFiles.length > 0 && (
+              {uploadedFilesMeta.length > 0 && (
                 <div className="mt-3 space-y-2">
-                  {uploadedFiles.map((f, i) => (
-                    <div
-                      key={i}
-                      className="flex items-center justify-between p-3 rounded-md"
-                      style={{ background: "#f6f6f6" }}
-                    >
-                      <div
-                        style={{
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {f.name}
-                      </div>
+                  {uploadedFilesMeta.map((f, i) => (
+                    <div key={i} className="flex items-center justify-between p-3 rounded-md" style={{ background: "#f6f6f6" }}>
+                      <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</div>
                       <button type="button" onClick={() => removeFile(i)} style={{ color: "#d32f2f" }}>
                         <X />
                       </button>
@@ -529,13 +695,7 @@ export default function IdCardForm({ onNavigate, language }: IdCardFormProps) {
 
             <div>
               <label style={styles.label}>{txt("Select Forwarding Officer *")}</label>
-              <select
-                className="rounded-xl px-4 py-3 w-full"
-                style={{ border: "1px solid #e6e6e6", background: "white", appearance: "none" }}
-                value={forwardingOfficer}
-                onChange={(e) => setForwardingOfficer(e.target.value)}
-                required
-              >
+              <select className="rounded-xl px-4 py-3 w-full" style={{ border: "1px solid #e6e6e6", background: "white", appearance: "none" }} value={forwardingOfficer} onChange={(e) => setForwardingOfficer(e.target.value)} required>
                 <option value="">{txt("Select Forwarding Officer")}</option>
                 <option value="CO-001">Raj Kumar - Chief Officer</option>
                 <option value="AO-002">Priya Singh - Area Officer</option>
@@ -545,20 +705,11 @@ export default function IdCardForm({ onNavigate, language }: IdCardFormProps) {
             </div>
 
             <div className="flex gap-6 items-center mt-6">
-              <button
-                type="button"
-                onClick={() => alert(txt("Draft saved"))}
-                className="flex-1 border-2 rounded-xl"
-                style={{ padding: "18px 28px", borderColor: "#0b3355", color: "#0b3355", fontWeight: 600 }}
-              >
+              <button type="button" onClick={() => saveDraft()} className="flex-1 border-2 rounded-xl" style={{ padding: "18px 28px", borderColor: "#0b3355", color: "#0b3355", fontWeight: 600 }}>
                 {txt("Save Draft")}
               </button>
 
-              <button
-                type="submit"
-                className="flex-1 rounded-xl"
-                style={{ padding: "18px 28px", background: "#2e7d32", color: "white", fontWeight: 600 }}
-              >
+              <button type="submit" className="flex-1 rounded-xl" style={{ padding: "18px 28px", background: "#2e7d32", color: "white", fontWeight: 600 }}>
                 {txt("Submit Application")}
               </button>
             </div>
@@ -570,30 +721,17 @@ export default function IdCardForm({ onNavigate, language }: IdCardFormProps) {
 
           <div className="mt-4 space-y-4">
             {familyMembers.map((m, idx) => (
-              <div
-                key={m.id}
-                className="rounded-lg p-4"
-                style={{ background: "#f6f6f6", border: "1px solid #ececec" }}
-              >
+              <div key={m.id} className="rounded-lg p-4" style={{ background: "#f6f6f6", border: "1px solid #ececec" }}>
                 <div className="grid md:grid-cols-2 gap-6">
                   <div>
                     <label style={styles.label}>{txt("Full Name")}</label>
-                    <Input
-                      value={m.name}
-                      onChange={(e: any) => updateFamilyMember(m.id, "name", e.target.value)}
-                      placeholder=""
-                    />
+                    <Input value={m.name} onChange={(e: any) => updateFamilyMember(m.id, "name", e.target.value)} placeholder="" />
                     {idx === 0 && errors["family.0.name"] && <div style={styles.errorText}>{errors["family.0.name"]}</div>}
                   </div>
 
                   <div>
                     <label style={styles.label}>{txt("Relation")}</label>
-                    <select
-                      value={m.relation}
-                      onChange={(e) => updateFamilyMember(m.id, "relation", e.target.value)}
-                      className="w-full rounded-xl px-4 py-3"
-                      style={{ border: "1px solid #e6e6e6" }}
-                    >
+                    <select value={m.relation} onChange={(e) => updateFamilyMember(m.id, "relation", e.target.value)} className="w-full rounded-xl px-4 py-3" style={{ border: "1px solid #e6e6e6" }}>
                       <option>Spouse</option>
                       <option>Son</option>
                       <option>Daughter</option>
@@ -605,22 +743,13 @@ export default function IdCardForm({ onNavigate, language }: IdCardFormProps) {
 
                   <div>
                     <label style={styles.label}>{txt("Age / Date of Birth")}</label>
-                    <Input
-                      placeholder="DD/MM/YYYY"
-                      value={m.age}
-                      onChange={(e: any) => updateFamilyMember(m.id, "age", e.target.value)}
-                    />
+                    <Input placeholder="DD/MM/YYYY" value={m.age} onChange={(e: any) => updateFamilyMember(m.id, "age", e.target.value)} />
                     {idx === 0 && errors["family.0.age"] && <div style={styles.errorText}>{errors["family.0.age"]}</div>}
                   </div>
 
                   <div>
                     <label style={styles.label}>{txt("Gender")}</label>
-                    <select
-                      value={m.gender}
-                      onChange={(e) => updateFamilyMember(m.id, "gender", e.target.value)}
-                      className="w-full rounded-xl px-4 py-3"
-                      style={{ border: "1px solid #e6e6e6" }}
-                    >
+                    <select value={m.gender} onChange={(e) => updateFamilyMember(m.id, "gender", e.target.value)} className="w-full rounded-xl px-4 py-3" style={{ border: "1px solid #e6e6e6" }}>
                       <option>Male</option>
                       <option>Female</option>
                       <option>Other</option>
@@ -629,68 +758,32 @@ export default function IdCardForm({ onNavigate, language }: IdCardFormProps) {
 
                   <div className="md:col-span-2">
                     <label style={styles.label}>{txt("Aadhaar Number (Optional)")}</label>
-                    <Input
-                      value={m.aadhaar}
-                      onChange={(e: any) => updateFamilyMember(m.id, "aadhaar", e.target.value)}
-                      placeholder={txt("Optional")}
-                    />
+                    <Input value={m.aadhaar} onChange={(e: any) => updateFamilyMember(m.id, "aadhaar", e.target.value)} placeholder={txt("Optional")} />
                   </div>
 
-                  {/* NEW FIELD: Unique Identification Mark per family member */}
                   <div className="md:col-span-2">
-                    <label style={styles.label}>
-                      {txt("Unique Identification Mark (Optional)")}
-                    </label>
-                    <Input
-                      value={m.uniqueIdentificationMark}
-                      onChange={(e: any) =>
-                        updateFamilyMember(m.id, "uniqueIdentificationMark", e.target.value)
-                      }
-                      placeholder={txt("Optional")}
-                    />
+                    <label style={styles.label}>{txt("Unique Identification Mark (Optional)")}</label>
+                    <Input value={m.uniqueIdentificationMark} onChange={(e: any) => updateFamilyMember(m.id, "uniqueIdentificationMark", e.target.value)} placeholder={txt("Optional")} />
                   </div>
 
                   <div className="md:col-span-2">
                     <label style={styles.label}>{txt("Supporting Document (Optional)")}</label>
 
-                    {/* visible choose button + filename */}
                     <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 6 }}>
-                      <label
-                        htmlFor={`member-doc-${m.id}`}
-                        className="rounded-xl px-4 py-2"
-                        style={{
-                          border: "1px solid #e6e6e6",
-                          background: "white",
-                          cursor: "pointer",
-                          fontWeight: 600,
-                        }}
-                      >
+                      <label htmlFor={`member-doc-${m.id}`} className="rounded-xl px-4 py-2" style={{ border: "1px solid #e6e6e6", background: "white", cursor: "pointer", fontWeight: 600 }}>
                         {txt("Choose file")}
                       </label>
 
-                      <span style={{ color: "#6b7280", fontSize: 14 }}>
-                        {m.doc ? m.doc.name : txt("No file chosen")}
-                      </span>
+                      <span style={{ color: "#6b7280", fontSize: 14 }}>{m.doc ? (m.doc instanceof File ? m.doc.name : (m.doc as any).name ?? txt("No file chosen")) : txt("No file chosen")}</span>
                     </div>
 
-                    {/* hidden input that the label activates; unique id per member */}
-                    <input
-                      id={`member-doc-${m.id}`}
-                      type="file"
-                      accept=".pdf,.jpg,.jpeg,.png"
-                      onChange={(e) => updateFamilyMember(m.id, "doc", e.currentTarget.files?.[0] || null)}
-                      style={{ display: "none" }}
-                    />
+                    <input id={`member-doc-${m.id}`} type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={(e) => updateFamilyMember(m.id, "doc", e.currentTarget.files?.[0] || null)} style={{ display: "none" }} />
                   </div>
                 </div>
 
                 <div className="mt-3">
                   {idx !== 0 ? (
-                    <button
-                      type="button"
-                      onClick={() => removeFamilyMember(m.id)}
-                      style={{ color: "#d32f2f", fontWeight: 600 }}
-                    >
+                    <button type="button" onClick={() => removeFamilyMember(m.id)} style={{ color: "#d32f2f", fontWeight: 600 }}>
                       {txt("Remove")} ×
                     </button>
                   ) : (
@@ -701,18 +794,29 @@ export default function IdCardForm({ onNavigate, language }: IdCardFormProps) {
             ))}
 
             <div>
-              <button
-                type="button"
-                onClick={addFamilyMember}
-                className="rounded-xl px-4 py-3"
-                style={{ background: "#f6f6f6", color: "#2e7d32", fontWeight: 700 }}
-              >
+              <button type="button" onClick={addFamilyMember} className="rounded-xl px-4 py-3" style={{ background: "#f6f6f6", color: "#2e7d32", fontWeight: 700 }}>
                 <Plus style={{ marginRight: 8 }} /> {txt("Add member")}
               </button>
             </div>
           </div>
         </div>
       </div>
+
+      {/* Debug UI */}
+      {debugAttempts.length > 0 && (
+        <div style={styles.debugBox}>
+          <div style={{ fontWeight: 700, marginBottom: 8 }}>Back navigation debug</div>
+          <div style={{ opacity: 0.85, fontSize: 11, marginBottom: 8 }}>Check console for the same messages.</div>
+          <ul style={{ paddingLeft: 14, margin: 0 }}>
+            {debugAttempts.map((d, i) => (
+              <li key={i} style={{ marginBottom: 6 }}>
+                {d}
+              </li>
+            ))}
+          </ul>
+          <div style={{ marginTop: 8, fontSize: 11, opacity: 0.8 }}>If still 404, paste your dashboard file path (e.g. /app/dashboard/page.tsx)</div>
+        </div>
+      )}
     </main>
   )
 }

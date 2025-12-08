@@ -42,11 +42,78 @@ export default function EditIdCardPage() {
     return <div className="p-8 text-center">Loading draft…</div>
   }
 
+  // Parent navigation handlers: prefer router.back(), otherwise try known dashboard locations
+  const tryFallbacks = async () => {
+    // common candidates (edit this list to match your repo if you know the path)
+    const candidates = [
+      "/dashboard",
+      "/home",
+      "/app/dashboard",
+      "/(private)/dashboard",
+      "/user/dashboard",
+      "/portal/dashboard",
+      "/",
+    ]
+
+    // try back first
+    try {
+      if (typeof window !== "undefined" && window.history && window.history.length > 1) {
+        try {
+          router.back()
+          return
+        } catch (err) {
+          console.warn("router.back() threw:", err)
+        }
+      }
+    } catch {}
+
+    // try replace to candidates
+    for (const p of candidates) {
+      try {
+        await router.replace(p)
+        return
+      } catch (err) {
+        console.warn("router.replace threw for", p, err)
+      }
+    }
+
+    // last resort hard redirect
+    try {
+      if (typeof window !== "undefined") window.location.href = "/"
+    } catch {}
+  }
+
+  const onNavigate = (view?: any) => {
+    // keep signature compatible — parent consumer may send "dashboard"/"application-status" etc.
+    if (view === "application-status") {
+      // try to navigate to application status page (you can customize)
+      try {
+        router.replace("/application-status")
+        return
+      } catch {}
+    }
+
+    // default: attempt safe fallback navigation
+    tryFallbacks()
+  }
+
+  const onCancel = () => {
+    // try router.back() then fallback
+    try {
+      if (typeof window !== "undefined" && window.history && window.history.length > 1) {
+        router.back()
+        return
+      }
+    } catch (err) {
+      console.warn("router.back() onCancel threw:", err)
+    }
+    tryFallbacks()
+  }
+
   return (
     <IdCardForm
-      // these handlers ensure the form's Back button and any parent navigation go to dashboard
-      onNavigate={() => router.push("/dashboard")}
-      onCancel={() => router.push("/dashboard")}
+      onNavigate={onNavigate}
+      onCancel={onCancel}
       language="en"
       initialData={draftData}
       mode="edit"
