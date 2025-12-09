@@ -52,15 +52,11 @@ export default function Dashboard({
   empNo = "EMP001",
   onChangePassword,
 }: DashboardProps) {
-  // local language state — initialized from the prop if provided
   const [language, setLanguage] = useState<"en" | "hi">(initialLanguage)
 
-  // === SYNC FIX: ensure local state follows prop changes ===
-  // This keeps `language` up-to-date when the parent toggles language.
   useEffect(() => {
     setLanguage(initialLanguage)
   }, [initialLanguage])
-  // =========================================================
 
   const [showIdCardForm, setShowIdCardForm] = useState(false)
   const [hasApplied, setHasApplied] = useState(false)
@@ -72,7 +68,6 @@ export default function Dashboard({
   const [viewError, setViewError] = useState<string | null>(null)
   const [loadedFrom, setLoadedFrom] = useState<string | null>(null) // "draft:KEY" | "lastSubmitted" | "server:URL" | "example"
 
-  // Prevent background scroll when modal is open
   useEffect(() => {
     if (isViewOpen) {
       const prev = document.body.style.overflow
@@ -84,7 +79,6 @@ export default function Dashboard({
     return
   }, [isViewOpen])
 
-  // show id card form as a full screen modal replacement
   if (showIdCardForm) {
     return (
       <IdCardForm
@@ -95,7 +89,6 @@ export default function Dashboard({
     )
   }
 
-  // helper: safe JSON parse from Response
   async function safeJson(res: Response) {
     try {
       return await res.json()
@@ -110,7 +103,6 @@ export default function Dashboard({
     }
   }
 
-  // helper: normalize arbitrary object stored locally to Application shape
   function normalizeToApplication(obj: any, emp = empNo): Application {
     return {
       id: obj.id ?? obj.applicationId ?? undefined,
@@ -143,14 +135,13 @@ export default function Dashboard({
    *  4) fetch from server (several candidate endpoints)
    *  5) example fallback
    *
-   * This version logs the source (console) and stores a small label visible in the modal.
+   * IMPORTANT: This function now **returns** { app, message } so callers can use the loaded app immediately
    */
-  async function loadApplication(emp = empNo) {
+  async function loadApplication(emp = empNo): Promise<{ app: Application; message: string }> {
     setLoadingView(true)
     setViewError(null)
     setLoadedFrom(null)
 
-    // 1) Try multiple draft keys in localStorage/sessionStorage (common variations)
     const draftKeysToTry = [
       "idcardDraft",
       "idCardDraft",
@@ -165,7 +156,6 @@ export default function Dashboard({
 
     for (const k of draftKeysToTry) {
       try {
-        // check both localStorage and sessionStorage
         const rawLocal = localStorage.getItem(k)
         const rawSession = sessionStorage.getItem(k)
         const raw = rawLocal ?? rawSession
@@ -192,38 +182,40 @@ export default function Dashboard({
             submittedAt: parsed.updatedAt ?? undefined,
           }
 
+          // set state for UI but also return object
           setApplication(appFromDraft)
           setViewError("Showing your saved draft (local).")
           setHasApplied(true)
           setLoadingView(false)
           setLoadedFrom(`draft:${k}`)
-          return
+          return { app: appFromDraft, message: "Showing your saved draft (local)." }
         }
       } catch (err) {
         console.warn(`[Dashboard] failed parsing draft key ${k}:`, err)
       }
     }
 
-    // 2) fallback: lastSubmittedApplication (older key)
+    // lastSubmittedApplication fallback
     try {
       const rawLast = localStorage.getItem("lastSubmittedApplication") ?? localStorage.getItem("lastSubmittedApp")
       if (rawLast) {
         const parsed = JSON.parse(rawLast)
         if (parsed) {
           console.info("[Dashboard] Loaded lastSubmittedApplication from localStorage", parsed)
-          setApplication(normalizeToApplication(parsed, emp))
+          const app = normalizeToApplication(parsed, emp)
+          setApplication(app)
           setViewError("Loaded your last submitted application (local).")
           setHasApplied(true)
           setLoadingView(false)
           setLoadedFrom("lastSubmitted")
-          return
+          return { app, message: "Loaded your last submitted application (local)." }
         }
       }
     } catch (err) {
       console.warn("Failed to parse lastSubmittedApplication:", err)
     }
 
-    // 3) Try a list of server endpoints (in order)
+    // server candidate endpoints
     const candidateUrls = [
       `/api/idcard?employee=${encodeURIComponent(emp)}`,
       `/api/applications/${encodeURIComponent(emp)}`,
@@ -317,14 +309,14 @@ export default function Dashboard({
         setViewError(null)
         setLoadingView(false)
         setLoadedFrom(`server:${url}`)
-        return
+        return { app: appFromServer, message: "Loaded from server." }
       } catch (err) {
         console.warn("Could not fetch from candidate url:", err)
       }
     }
 
-    // 4) last resort: example data
-    setApplication({
+    // fallback example
+    const exampleApp: Application = {
       id: "example-1",
       status: "Submitted",
       name: userName,
@@ -336,32 +328,34 @@ export default function Dashboard({
       documents: ["Passport (uploaded)", "Address proof (uploaded)"],
       photoUrl: undefined,
       submittedAt: new Date().toISOString(),
-    })
+    }
+    setApplication(exampleApp)
     setViewError("Could not fetch live data — showing example data.")
     setHasApplied(true)
     setLoadingView(false)
     setLoadedFrom("example")
     console.warn("[Dashboard] Falling back to example data")
+    return { app: exampleApp, message: "Could not fetch live data — showing example data." }
   }
 
-  // open the modal only AFTER loading the data (so local draft is shown immediately)
+  // now callers use the returned app to ensure they have the right data synchronously
+
   async function openViewModal() {
-    // load first (will set loadingView while fetching/parsing)
-    await loadApplication(empNo)
-    // then open the modal UI so it displays the loaded "application" immediately
+    setLoadingView(true)
+    const { app, message } = await loadApplication(empNo)
+    // ensure UI uses the loaded app immediately
+    setApplication(app)
+    setViewError(message.startsWith("Showing") ? "Showing your saved draft (local)." : viewError)
+    setLoadingView(false)
     setIsViewOpen(true)
   }
 
-  // NEW: handle Update Application click
-  // loads data (priority: draft -> lastSubmitted -> server) then navigates to update page,
-  // passing the loaded application as payload so the edit form can prefill.
   async function handleUpdateClick() {
     setLoadingView(true)
-    await loadApplication(empNo)
+    const { app } = await loadApplication(empNo)
     setLoadingView(false)
-    // pass the loaded application object to the update view for prefill
-    // the update page should accept this payload and populate fields accordingly
-    onNavigate?.("update-application", application)
+    // pass the loaded application directly to the update screen so it can prefill
+    onNavigate?.("update-application", app)
   }
 
   function closeViewModal() {
@@ -370,12 +364,9 @@ export default function Dashboard({
     setLoadedFrom(null)
   }
 
-  // render a document row. If doc is {name, url} -> show link.
-  // if doc is {name} with no url -> show name + "Open" button that tries to fetch /api/uploads/<filename>
   const renderDocumentItem = (doc: string | ApplicationDocument, idx: number) => {
     if (!doc) return null
 
-    // simple string case
     if (typeof doc === "string") {
       return (
         <li key={idx} className="flex items-center gap-3">
@@ -385,7 +376,6 @@ export default function Dashboard({
       )
     }
 
-    // object with url -> open directly
     if (doc.url) {
       return (
         <li key={idx} className="flex items-center gap-3">
@@ -396,7 +386,6 @@ export default function Dashboard({
       )
     }
 
-    // object with name only -> attempt to fetch from server route when user clicks "Open"
     const tryOpenLocalFile = async (name: string) => {
       try {
         const path = `/api/uploads/${encodeURIComponent(name)}`
@@ -430,7 +419,6 @@ export default function Dashboard({
     )
   }
 
-  // small helper to format date strings nicely
   function fmtDate(d?: string) {
     if (!d) return "—"
     try {
@@ -442,9 +430,6 @@ export default function Dashboard({
     }
   }
 
-  // -------------------------
-  // RENDER
-  // -------------------------
   return (
     <div className="min-h-[calc(100vh-200px)] py-10 px-6 bg-slate-50">
       <div className="max-w-6xl mx-auto">
@@ -475,14 +460,25 @@ export default function Dashboard({
             </div>
 
             <div className="w-full">
-              <Button
-                type="button"
-                onClick={() => setShowIdCardForm(true)}
-                className="w-full text-white bg-[#2E7D32] hover:bg-green-700 flex items-center justify-center gap-3 py-3"
-              >
-                <FileText className="w-5 h-5" />
-                {language === "en" ? "Apply Now" : "अभी आवेदन करें"}
-              </Button>
+              {!hasApplied ? (
+                <Button
+                  type="button"
+                  onClick={() => setShowIdCardForm(true)}
+                  className="w-full text-white bg-[#2E7D32] hover:bg-green-700 flex items-center justify-center gap-3 py-3"
+                >
+                  <FileText className="w-5 h-5" />
+                  {language === "en" ? "Apply Now" : "अभी आवेदन करें"}
+                </Button>
+              ) : (
+                <Button
+                  disabled
+                  type="button"
+                  className="w-full bg-gray-200 text-gray-600 flex items-center justify-center gap-3 py-3 cursor-not-allowed"
+                >
+                  <FileText className="w-5 h-5" />
+                  {language === "en" ? "Already Applied" : "पहले ही आवेदन किया जा चुका है"}
+                </Button>
+              )}
             </div>
           </Card>
 
@@ -497,7 +493,6 @@ export default function Dashboard({
                 type="button"
                 variant="outline"
                 onClick={() => {
-                  // open preview modal (loads data first, then opens)
                   void openViewModal()
                 }}
                 className="w-full flex items-center justify-center gap-3 py-3 border-[#002B5C] text-[#002B5C]"
@@ -508,7 +503,6 @@ export default function Dashboard({
               <Button
                 type="button"
                 onClick={() => {
-                  // NEW: load application then navigate to update page (prefill)
                   void handleUpdateClick()
                 }}
                 className="w-full text-white bg-[#1565C0] hover:bg-blue-700 flex items-center justify-center gap-3 py-3"
@@ -582,7 +576,6 @@ export default function Dashboard({
       {/* View Application Modal */}
       {isViewOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
-          {/* Backdrop */}
           <div
             className="fixed inset-0 bg-black/40"
             onClick={closeViewModal}
@@ -601,12 +594,11 @@ export default function Dashboard({
 
             <h4 className="text-lg font-semibold mb-2">{language === "en" ? "Application Details" : "आवेदन विवरण"}</h4>
 
-            {/* Visible small source badge */}
             {loadedFrom && (
               <div className="text-xs text-amber-700 mb-2">
                 {loadedFrom.startsWith("draft:") ? "Showing saved draft (local)." :
                  loadedFrom === "lastSubmitted" ? "Loaded last submitted (local)." :
-                 loadedFrom.startsWith("server:") ? "Loaded from server." :
+                 loadedFrom?.startsWith("server:") ? "Loaded from server." :
                  loadedFrom === "example" ? "Could not fetch live data — showing example data." : loadedFrom}
               </div>
             )}
@@ -749,7 +741,6 @@ export default function Dashboard({
                   )}
                 </div>
 
-                {/* Actions: EDIT REMOVED */}
                 <div className="text-right">
                   <Button type="button" onClick={closeViewModal} className="px-4 py-2 bg-blue-600 text-white">
                     {language === "en" ? "Close" : "बंद करें"}

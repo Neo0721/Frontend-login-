@@ -1,109 +1,110 @@
-// components/IdCardApp.tsx
-"use client"
+"use client";
 
-import React, { useEffect, useState } from "react"
+import React, { useEffect, useState } from "react";
 
 /**
- * Single-file app that includes:
- * - Dashboard (preview & update)
- * - Preview modal
- * - Apply form (save draft & submit)
- * - Update form (prefill from draft/lastSubmitted and submit)
+ * components/IdCardApp.tsx
+ *
+ * Single-file client component implementing:
+ *  - Dashboard (Preview / Update / Apply)
+ *  - Preview modal (read-only)
+ *  - Apply form (save draft & submit)
+ *  - Update form (prefill draft/lastSubmitted, save draft & submit)
  *
  * Storage keys:
- * - idcardDraft (local draft object: { id, formData, uploadedFilesMeta, updatedAt })
- * - lastSubmittedApplication (server-like object saved after submit)
+ *  - idcardDraft
+ *  - lastSubmittedApplication
  *
- * Behavior:
- * - Preview tries: idcardDraft -> lastSubmittedApplication -> example
- * - Update loads same priority and allows editing + save draft + submit
- * - Submit writes lastSubmittedApplication and clears idcardDraft
+ * NOTE: This is a dev-friendly, self-contained implementation. Replace or adapt UI to use your own Input/Button components.
  */
 
 // ---------- Types ----------
-type Doc = { name: string; url?: string }
+type Doc = { name: string; url?: string };
 
 type FormValues = {
-  employeeNameEn: string
-  employeeNameHi?: string
-  employeeNo?: string
-  designation?: string
-  designationHi?: string
-  department?: string
-  mobileNumber?: string
-  dateOfAppointment?: string
-  dateOfBirth?: string
-  address?: string
-  officeLocation?: string
-  manager?: string
-  employeeType?: string
-  gender?: string
-  maritalStatus?: string
-  bloodGroup?: string
-  emergencyContact?: string
-  photoUrl?: string
-  documents?: Doc[]
-  notes?: string
-  [k: string]: any
-}
+  employeeNameEn: string;
+  employeeNameHi?: string;
+  employeeNo?: string;
+  designation?: string;
+  designationHi?: string;
+  department?: string;
+  mobileNumber?: string;
+  dateOfAppointment?: string;
+  dateOfBirth?: string;
+  address?: string;
+  officeLocation?: string;
+  manager?: string;
+  employeeType?: string;
+  gender?: string;
+  maritalStatus?: string;
+  bloodGroup?: string;
+  emergencyContact?: string;
+  photoUrl?: string;
+  documents?: Doc[];
+  notes?: string;
+  [k: string]: any;
+};
 
 type Application = {
-  id?: string
-  formData?: FormValues
-  name?: string
-  employeeNo?: string
-  department?: string
-  status?: string
-  submittedAt?: string
-  documents?: (string | Doc)[]
-  photoUrl?: string
-  statusHistory?: { status: string; at?: string }[]
-}
+  id?: string;
+  formData?: FormValues;
+  name?: string;
+  employeeNo?: string;
+  department?: string;
+  status?: string;
+  submittedAt?: string;
+  documents?: (string | Doc)[];
+  photoUrl?: string;
+  statusHistory?: { status: string; at?: string }[];
+};
 
 // ---------- Helpers ----------
-const DRAFT_KEY = "idcardDraft"
-const LAST_KEY = "lastSubmittedApplication"
+const DRAFT_KEY = "idcardDraft";
+const LAST_KEY = "lastSubmittedApplication";
 
-function fmtDate(d?: string | null) {
-  if (!d) return "—"
+function readDraft() {
   try {
-    const dt = new Date(d)
-    if (isNaN(dt.getTime())) return d
-    return dt.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })
+    const raw = localStorage.getItem(DRAFT_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
   } catch {
-    return d
+    return null;
   }
 }
-
-function readDraft(): { id?: string; formData?: FormValues; uploadedFilesMeta?: Doc[]; updatedAt?: string } | null {
+function writeDraft(d: any) {
   try {
-    const raw = localStorage.getItem(DRAFT_KEY)
-    if (!raw) return null
-    return JSON.parse(raw)
-  } catch {
-    return null
-  }
-}
-function writeDraft(draft: any) {
-  localStorage.setItem(DRAFT_KEY, JSON.stringify(draft))
+    localStorage.setItem(DRAFT_KEY, JSON.stringify(d));
+  } catch {}
 }
 function clearDraft() {
-  localStorage.removeItem(DRAFT_KEY)
-}
-function readLast(): any | null {
   try {
-    const raw = localStorage.getItem(LAST_KEY)
-    if (!raw) return null
-    return JSON.parse(raw)
+    localStorage.removeItem(DRAFT_KEY);
+  } catch {}
+}
+function readLast() {
+  try {
+    const raw = localStorage.getItem(LAST_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
   } catch {
-    return null
+    return null;
   }
 }
-function writeLast(obj: any) {
-  localStorage.setItem(LAST_KEY, JSON.stringify(obj))
+function writeLast(o: any) {
+  try {
+    localStorage.setItem(LAST_KEY, JSON.stringify(o));
+  } catch {}
 }
-
-// example fallback
+function fmtDate(d?: string | null) {
+  if (!d) return "—";
+  try {
+    const dt = new Date(d);
+    if (isNaN(dt.getTime())) return d;
+    return dt.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+  } catch {
+    return d;
+  }
+}
 function exampleApplication(emp = "EMP001"): Application {
   return {
     id: "example-1",
@@ -113,14 +114,12 @@ function exampleApplication(emp = "EMP001"): Application {
     status: "Submitted",
     submittedAt: new Date().toISOString(),
     documents: ["Passport (uploaded)", "Address proof (uploaded)"],
-    photoUrl: undefined,
-  }
+  };
 }
 
-// ---------- Mock server submit (client-side) ----------
+// ---------- Mock "server" submit (client-side) ----------
 async function mockSubmit(formData: FormValues) {
-  // emulate slight delay
-  await new Promise((res) => setTimeout(res, 300))
+  await new Promise((res) => setTimeout(res, 300));
   const resp = {
     id: formData.employeeNo ?? `srv-${Date.now()}`,
     formData,
@@ -129,23 +128,21 @@ async function mockSubmit(formData: FormValues) {
     department: formData.department,
     status: "Submitted",
     submittedAt: new Date().toISOString(),
-  }
-  // write to localStorage as "server" response
-  writeLast(resp)
-  clearDraft()
-  return resp
+  };
+  writeLast(resp);
+  clearDraft();
+  return resp;
 }
 
 // ---------- Components ----------
-
 function PreviewModal({
   application,
   loadedFrom,
   onClose,
 }: {
-  application: Application | null
-  loadedFrom?: string | null
-  onClose: () => void
+  application: Application | null;
+  loadedFrom?: string | null;
+  onClose: () => void;
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -193,8 +190,8 @@ function PreviewModal({
               <ul className="list-disc ml-5 mt-1 text-slate-600">
                 {application.documents && application.documents.length > 0 ? (
                   application.documents.map((d, i) => {
-                    if (typeof d === "string") return <li key={i} className="flex items-center gap-3"><span>{d}</span><span className="ml-2 text-xs text-slate-500">(no preview available)</span></li>
-                    return <li key={i} className="flex items-center gap-3"><a className="underline" href={d.url ?? "#"} target="_blank" rel="noreferrer">{d.name}</a></li>
+                    if (typeof d === "string") return <li key={i} className="flex items-center gap-3"><span>{d}</span><span className="ml-2 text-xs text-slate-500">(no preview available)</span></li>;
+                    return <li key={i} className="flex items-center gap-3"><a className="underline" href={d.url ?? "#"} target="_blank" rel="noreferrer">{d.name}</a></li>;
                   })
                 ) : (
                   <li className="text-slate-500">No documents available</li>
@@ -216,12 +213,12 @@ function PreviewModal({
         )}
       </div>
     </div>
-  )
+  );
 }
 
-// ---------- Apply form (create new) ----------
+// ---------- Apply form ----------
 function IdCardForm({ onCancel, onSaved, onSubmitted }: { onCancel?: () => void; onSaved?: (d: any) => void; onSubmitted?: (resp: any) => void }) {
-  const defaultValues: FormValues = {
+  const defaults: FormValues = {
     employeeNameEn: "",
     employeeNameHi: "",
     employeeNo: "",
@@ -234,29 +231,29 @@ function IdCardForm({ onCancel, onSaved, onSubmitted }: { onCancel?: () => void;
     address: "",
     photoUrl: "",
     documents: [],
-  }
-  const [values, setValues] = useState<FormValues>(defaultValues)
-  const [msg, setMsg] = useState<string | null>(null)
+  };
+
+  const [values, setValues] = useState<FormValues>(defaults);
+  const [msg, setMsg] = useState<string | null>(null);
 
   useEffect(() => {
-    // if there is a draft or lastSubmitted prefill
-    const draft = readDraft()
+    const draft = readDraft();
     if (draft?.formData) {
-      setValues((v) => ({ ...v, ...draft.formData }))
-      setMsg("Loaded saved draft.")
-      setTimeout(() => setMsg(null), 1500)
-      return
+      setValues((v) => ({ ...v, ...draft.formData }));
+      setMsg("Loaded saved draft.");
+      setTimeout(() => setMsg(null), 1500);
+      return;
     }
-    const last = readLast()
+    const last = readLast();
     if (last?.formData) {
-      setValues((v) => ({ ...v, ...last.formData }))
-      setMsg("Loaded last submitted application.")
-      setTimeout(() => setMsg(null), 1500)
+      setValues((v) => ({ ...v, ...last.formData }));
+      setMsg("Loaded last submitted application.");
+      setTimeout(() => setMsg(null), 1500);
     }
-  }, [])
+  }, []);
 
   function updateField<K extends keyof FormValues>(k: K, val: FormValues[K]) {
-    setValues((s) => ({ ...s, [k]: val }))
+    setValues((s) => ({ ...s, [k]: val }));
   }
 
   function saveDraft() {
@@ -265,38 +262,57 @@ function IdCardForm({ onCancel, onSaved, onSubmitted }: { onCancel?: () => void;
       formData: values,
       uploadedFilesMeta: values.documents ?? [],
       updatedAt: new Date().toISOString(),
-    }
-    writeDraft(draft)
-    setMsg("Draft saved locally.")
-    onSaved?.(draft)
-    setTimeout(() => setMsg(null), 1800)
+    };
+    writeDraft(draft);
+    setMsg("Draft saved locally.");
+    onSaved?.(draft);
+    setTimeout(() => setMsg(null), 1800);
   }
 
   async function submit() {
-    // minimal validation
     if (!values.employeeNameEn || !values.designation || !values.department || !values.mobileNumber || !values.dateOfAppointment) {
-      setMsg("Please fill required fields (Name, Designation, Department, Mobile, Joining Date).")
-      return
+      setMsg("Please fill required fields (Name, Designation, Department, Mobile, Joining Date).");
+      return;
     }
     try {
-      setMsg("Submitting...")
-      const resp = await mockSubmit(values)
-      setMsg("Submitted successfully.")
-      onSubmitted?.(resp)
-      setTimeout(() => setMsg(null), 1200)
+      setMsg("Submitting...");
+      // Attempt real API first — if it fails, fallback to mockSubmit
+      try {
+        const res = await fetch(`/api/idcard`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ formData: values }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          writeLast(data);
+          clearDraft();
+          setMsg("Submitted successfully (server).");
+          onSubmitted?.(data);
+          setTimeout(() => setMsg(null), 1200);
+          return;
+        }
+        // else fallback:
+      } catch (e) {
+        // fallback to local mock
+      }
+      const resp = await mockSubmit(values);
+      setMsg("Submitted successfully (local).");
+      onSubmitted?.(resp);
+      setTimeout(() => setMsg(null), 1200);
     } catch (err) {
-      console.error(err)
-      setMsg("Submit failed.")
+      console.error(err);
+      setMsg("Submit failed.");
     }
   }
 
   function addDocFile(file?: File) {
-    if (!file) return
-    const doc = { name: file.name }
-    setValues((s) => ({ ...s, documents: [...(s.documents ?? []), doc] }))
+    if (!file) return;
+    const doc = { name: file.name };
+    setValues((s) => ({ ...s, documents: [...(s.documents ?? []), doc] }));
   }
   function removeDoc(i: number) {
-    setValues((s) => ({ ...s, documents: (s.documents ?? []).filter((_, idx) => idx !== i) }))
+    setValues((s) => ({ ...s, documents: (s.documents ?? []).filter((_, idx) => idx !== i) }));
   }
 
   return (
@@ -337,10 +353,10 @@ function IdCardForm({ onCancel, onSaved, onSubmitted }: { onCancel?: () => void;
         <button type="button" onClick={() => onCancel?.()} className="px-4 py-2 border rounded">Cancel</button>
       </div>
     </div>
-  )
+  );
 }
 
-// ---------- Update form (edit existing) ----------
+// ---------- Update form ----------
 function UpdateForm({ payload, onCancel, onSubmitted }: { payload?: Application | null; onCancel?: () => void; onSubmitted?: (resp: any) => void }) {
   const empty: FormValues = {
     employeeNameEn: "",
@@ -355,20 +371,18 @@ function UpdateForm({ payload, onCancel, onSubmitted }: { payload?: Application 
     address: "",
     photoUrl: "",
     documents: [],
-  }
-  const initialFromPayload = payload?.formData ?? null
-  const draft = readDraft()
-  const last = readLast()
+  };
 
-  // Priority to initialize: draft -> payload -> last -> empty
-  const initial = draft?.formData ?? initialFromPayload ?? last?.formData ?? empty
+  const draft = readDraft();
+  const last = readLast();
+  const initial = draft?.formData ?? payload?.formData ?? last?.formData ?? empty;
 
-  const [values, setValues] = useState<FormValues>({ ...empty, ...initial })
-  const [msg, setMsg] = useState<string | null>(null)
-  const [submitting, setSubmitting] = useState(false)
+  const [values, setValues] = useState<FormValues>({ ...empty, ...initial });
+  const [msg, setMsg] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
-  function updateField<K extends keyof FormValues>(k: K, val: FormValues[K]) {
-    setValues((s) => ({ ...s, [k]: val }))
+  function updateField<K extends keyof FormValues>(k: K, v: FormValues[K]) {
+    setValues((s) => ({ ...s, [k]: v }));
   }
 
   function saveDraftLocal() {
@@ -377,38 +391,58 @@ function UpdateForm({ payload, onCancel, onSubmitted }: { payload?: Application 
       formData: values,
       uploadedFilesMeta: values.documents ?? [],
       updatedAt: new Date().toISOString(),
-    }
-    writeDraft(d)
-    setMsg("Draft saved")
-    setTimeout(() => setMsg(null), 1400)
+    };
+    writeDraft(d);
+    setMsg("Draft saved");
+    setTimeout(() => setMsg(null), 1400);
   }
 
   async function submit() {
-    // simple validation
     if (!values.employeeNameEn || !values.designation || !values.department || !values.mobileNumber || !values.dateOfAppointment) {
-      setMsg("Please fill required fields.")
-      return
+      setMsg("Please fill required fields.");
+      return;
     }
-    setSubmitting(true)
+    setSubmitting(true);
     try {
-      const resp = await mockSubmit(values)
-      setMsg("Submitted successfully")
-      onSubmitted?.(resp)
-      setTimeout(() => setMsg(null), 1000)
+      // try server, fallback to mock
+      try {
+        const res = await fetch(`/api/idcard`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ formData: values }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          writeLast(data);
+          clearDraft();
+          setMsg("Submitted (server)");
+          onSubmitted?.(data);
+          setTimeout(() => setMsg(null), 1000);
+          setSubmitting(false);
+          return;
+        }
+      } catch (e) {
+        // fallback
+      }
+      const resp = await mockSubmit(values);
+      setMsg("Submitted (local)");
+      onSubmitted?.(resp);
+      setTimeout(() => setMsg(null), 900);
     } catch (err) {
-      setMsg("Submit failed")
+      console.error(err);
+      setMsg("Submit failed");
     } finally {
-      setSubmitting(false)
+      setSubmitting(false);
     }
   }
 
   function addDoc(f?: File) {
-    if (!f) return
-    const d = { name: f.name }
-    setValues((s) => ({ ...s, documents: [...(s.documents ?? []), d] }))
+    if (!f) return;
+    const d = { name: f.name };
+    setValues((s) => ({ ...s, documents: [...(s.documents ?? []), d] }));
   }
   function removeDoc(i: number) {
-    setValues((s) => ({ ...s, documents: (s.documents ?? []).filter((_, idx) => idx !== i) }))
+    setValues((s) => ({ ...s, documents: (s.documents ?? []).filter((_, idx) => idx !== i) }));
   }
 
   return (
@@ -449,28 +483,20 @@ function UpdateForm({ payload, onCancel, onSubmitted }: { payload?: Application 
         <button onClick={() => onCancel?.()} className="px-4 py-2 border rounded">Cancel</button>
       </div>
     </div>
-  )
+  );
 }
 
-// ---------- Main container (single-file app) ----------
+// ---------- Main container ----------
 export default function IdCardApp({ startingEmp = "EMP001", language = "en" }: { startingEmp?: string; language?: "en" | "hi" }) {
-  // which view: "dashboard" | "apply" | "update"
-  const [view, setView] = useState<"dashboard" | "apply" | "update">("dashboard")
+  const [view, setView] = useState<"dashboard" | "apply" | "update">("dashboard");
+  const [isPreviewOpen, setPreviewOpen] = useState(false);
+  const [previewApp, setPreviewApp] = useState<Application | null>(null);
+  const [previewSourceLabel, setPreviewSourceLabel] = useState<string | null>(null);
+  const [updatePayload, setUpdatePayload] = useState<Application | null>(null);
+  const [hasApplied, setHasApplied] = useState<boolean>(!!readLast());
 
-  // loaded state for preview modal
-  const [isPreviewOpen, setPreviewOpen] = useState(false)
-  const [previewApp, setPreviewApp] = useState<Application | null>(null)
-  const [previewSourceLabel, setPreviewSourceLabel] = useState<string | null>(null)
-
-  // payload for update (application object)
-  const [updatePayload, setUpdatePayload] = useState<Application | null>(null)
-
-  const [hasApplied, setHasApplied] = useState<boolean>(!!readLast())
-
-  // loadApplication logic used by dashboard buttons (prefers draft)
   async function loadApplication(emp = startingEmp) {
-    // prefer local draft
-    const draft = readDraft()
+    const draft = readDraft();
     if (draft?.formData) {
       const app: Application = {
         id: draft.id,
@@ -481,11 +507,10 @@ export default function IdCardApp({ startingEmp = "EMP001", language = "en" }: {
         documents: draft.uploadedFilesMeta ?? [],
         status: "Draft",
         submittedAt: draft.updatedAt,
-      }
-      return { app, label: "Showing your saved draft (local)." }
+      };
+      return { app, label: "Showing your saved draft (local)." };
     }
-
-    const last = readLast()
+    const last = readLast();
     if (last) {
       const app: Application = {
         id: last.id,
@@ -496,42 +521,32 @@ export default function IdCardApp({ startingEmp = "EMP001", language = "en" }: {
         documents: last.documents ?? last.formData?.documents ?? [],
         status: last.status ?? "Submitted",
         submittedAt: last.submittedAt ?? last.createdAt,
-      }
-      return { app, label: "Loaded your last submitted application (local)." }
+      };
+      return { app, label: "Loaded your last submitted application (local)." };
     }
-
-    // fallback example
-    return { app: exampleApplication(emp), label: "Could not fetch live data — showing example data." }
+    return { app: exampleApplication(emp), label: "Could not fetch live data — showing example data." };
   }
 
-  // preview behavior: loads then opens modal
   async function handlePreviewClick() {
-    const { app, label } = await loadApplication(startingEmp)
-    setPreviewApp(app)
-    setPreviewSourceLabel(label)
-    setPreviewOpen(true)
-    setHasApplied(true)
+    const { app, label } = await loadApplication(startingEmp);
+    setPreviewApp(app);
+    setPreviewSourceLabel(label);
+    setPreviewOpen(true);
+    setHasApplied(true);
   }
 
-  // update behavior: loads then navigates to update form view passing application object
   async function handleUpdateClick() {
-    const { app } = await loadApplication(startingEmp)
-    setUpdatePayload(app)
-    setView("update")
+    const { app } = await loadApplication(startingEmp);
+    setUpdatePayload(app);
+    setView("update");
   }
 
-  // when user submits from forms (mockSubmit writes lastSubmittedApplication)
   function onFormSubmitted(resp: any) {
-    // resp already saved into localStorage by mockSubmit
-    setHasApplied(true)
-    // after submit navigate back to dashboard
-    setView("dashboard")
+    setHasApplied(true);
+    setView("dashboard");
   }
-
-  // when user saves draft from forms
   function onDraftSaved(_: any) {
-    // keep hasApplied true (draft exists)
-    setHasApplied(true)
+    setHasApplied(true);
   }
 
   return (
@@ -560,9 +575,7 @@ export default function IdCardApp({ startingEmp = "EMP001", language = "en" }: {
                   <p className="text-sm text-gray-600 mb-4">Start a new ID card application. Documents required will appear in the form.</p>
                 </div>
                 <div className="w-full">
-                  <button onClick={() => setView("apply")} className="w-full text-white bg-[#2E7D32] hover:bg-green-700 flex items-center justify-center gap-3 py-3 rounded">
-                    Apply Now
-                  </button>
+                  <button onClick={() => setView("apply")} className="w-full text-white bg-[#2E7D32] hover:bg-green-700 flex items-center justify-center gap-3 py-3 rounded">Apply Now</button>
                 </div>
               </div>
 
@@ -602,11 +615,7 @@ export default function IdCardApp({ startingEmp = "EMP001", language = "en" }: {
               <button onClick={() => setView("dashboard")} className="px-3 py-1 border rounded">← Back</button>
               <h3 className="text-lg font-semibold">Apply for ID Card</h3>
             </div>
-            <IdCardForm
-              onCancel={() => setView("dashboard")}
-              onSaved={(d) => onDraftSaved(d)}
-              onSubmitted={(resp) => onFormSubmitted(resp)}
-            />
+            <IdCardForm onCancel={() => setView("dashboard")} onSaved={(d) => onDraftSaved(d)} onSubmitted={(resp) => onFormSubmitted(resp)} />
           </>
         )}
 
@@ -617,14 +626,10 @@ export default function IdCardApp({ startingEmp = "EMP001", language = "en" }: {
               <h3 className="text-lg font-semibold">Update Application</h3>
             </div>
 
-            <UpdateForm
-              payload={updatePayload}
-              onCancel={() => setView("dashboard")}
-              onSubmitted={(resp) => onFormSubmitted(resp)}
-            />
+            <UpdateForm payload={updatePayload} onCancel={() => setView("dashboard")} onSubmitted={(resp) => onFormSubmitted(resp)} />
           </>
         )}
       </div>
     </div>
-  )
+  );
 }

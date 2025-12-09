@@ -10,9 +10,8 @@ import RegisterPage from "@/components/register-page";
 import Dashboard from "@/components/dashboard";
 import ChangePassword from "@/components/change-password";  // ✅ NEW IMPORT
 import Footer from "@/components/footer";
-import ForgotPassword from "@/components/forgot-password"
-
-
+import ForgotPassword from "@/components/forgot-password";
+import UpdateApplication from "@/components/update-application"; // <-- added import
 
 type PageView =
   | "landing"
@@ -22,7 +21,8 @@ type PageView =
   | "register"
   | "dashboard"
   | "change-password"
-  | "forgot-password";     // ✅ NEW VIEW
+  | "forgot-password"
+  | "update-application";     // ✅ NEW VIEW
 
 export default function Page() {
   const [currentView, setCurrentView] = useState<PageView>("landing");
@@ -31,12 +31,25 @@ export default function Page() {
   const [userName, setUserName] = useState("John Doe");
   const [empNo, setEmpNo] = useState("EMP001");
 
-  const handleNavigate = (view: PageView) => {
+  // store optional payload when navigating (e.g. application object for update)
+  const [updatePayload, setUpdatePayload] = useState<any | null>(null);
+
+  // handleNavigate now accepts optional payload
+  const handleNavigate = (view: PageView, payload?: any) => {
     if (view === "dashboard") {
       setIsLoggedIn(true);
     } else if (view === "landing") {
       setIsLoggedIn(false);
     }
+
+    // capture payload when navigating to update-application
+    if (view === "update-application") {
+      setUpdatePayload(payload ?? null);
+    } else {
+      // clear previous payload whenever navigating away
+      setUpdatePayload(null);
+    }
+
     setCurrentView(view);
   };
 
@@ -89,6 +102,17 @@ export default function Page() {
 
         {currentView === "change-password" && (
           <ChangePassword onNavigate={handleNavigate} language={language} />
+        )}
+
+        {/* NEW: update-application view */}
+        {currentView === "update-application" && (
+          <UpdateApplication
+            onNavigate={handleNavigate}
+            language={language}
+            userName={userName}
+            empNo={empNo}
+            payload={updatePayload}
+          />
         )}
       </main>
 
