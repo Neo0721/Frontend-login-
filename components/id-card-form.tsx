@@ -40,7 +40,7 @@ export default function IdCardForm({
   mode = "create",
 }: IdCardFormProps) {
   const router = useRouter()
-   const normLang = String(language ?? "en").trim().toLowerCase()
+  const normLang = String(language ?? "en").trim().toLowerCase()
   const txt = (en: string, hi?: string) => (normLang === "en" ? en : hi ?? en)
 
   useEffect(() => {
@@ -110,8 +110,29 @@ export default function IdCardForm({
     district: "",
     state: "",
     idCardNo: "",
+    // NEW fields
+    bloodGroup: "",
+    aadhaarNumber: "",
   })
   const [errors, setErrors] = useState<Record<string, string>>({})
+
+  // ---------- PHOTO & SIGNATURE STATE (consistent names) ----------
+  // keep as File | { name: string } | null so we can hydrate from draft (placeholder object)
+  const [userPhoto, setUserPhoto] = useState<File | { name: string } | null>(null)
+  const [userPhotoPreview, setUserPhotoPreview] = useState<string | null>(null)
+
+  const [signature, setSignature] = useState<File | { name: string } | null>(null)
+  const [signaturePreview, setSignaturePreview] = useState<string | null>(null)
+  // ----------------------------------------------------------------
+
+  // file -> dataURL helper (kept in case you prefer base64)
+  const readFileAsDataURL = (file: File) =>
+    new Promise<string>((resolve, reject) => {
+      const fr = new FileReader()
+      fr.onload = () => resolve(String(fr.result))
+      fr.onerror = (e) => reject(e)
+      fr.readAsDataURL(file)
+    })
 
   // NEW: Success message state
   const [showSuccessMessage, setShowSuccessMessage] = useState(false)
@@ -268,6 +289,22 @@ export default function IdCardForm({
     const loadFromSource = (d: any) => {
       if (!d) return
       if (d.formData) setFormData((s) => ({ ...s, ...(d.formData ?? {}) }))
+      // hydrate user photo meta if provided (we can't reconstruct File from localStorage; store name)
+      if (d.formData && d.formData.userPhoto) {
+        setUserPhoto({ name: d.formData.userPhoto.name })
+        // no preview available for persisted placeholder; if initialData included a preview url, you can set it here:
+        if (d.formData.userPhoto.previewUrl) {
+          setUserPhotoPreview(d.formData.userPhoto.previewUrl)
+        }
+      }
+      // hydrate signature meta if provided (we can't reconstruct File from localStorage; store name)
+      if (d.formData && d.formData.signature) {
+        setSignature({ name: d.formData.signature.name })
+        if (d.formData.signature.previewUrl) {
+          setSignaturePreview(d.formData.signature.previewUrl)
+        }
+      }
+
       if (Array.isArray(d.familyMembers) && d.familyMembers.length > 0) {
         const members: FamilyMember[] = d.familyMembers.map((m: any, idx: number) => ({
           id: m.id ?? `${Date.now()}-${idx}`,
@@ -393,6 +430,18 @@ export default function IdCardForm({
       e.mobileNumber = txt("Enter a valid 10-digit mobile number.","मान्य 10-अंकीय मोबाइल नंबर दर्ज करें।")
     }
 
+    // Aadhaar: required and must be 12 digits
+    if (!formData.aadhaarNumber) {
+      e.aadhaarNumber = txt("Aadhaar number is required.","आधार नंबर आवश्यक है।")
+    } else if (!/^\d{12}$/.test(String(formData.aadhaarNumber))) {
+      e.aadhaarNumber = txt("Enter a valid 12-digit Aadhaar number.","मान्य 12-अंकीय आधार नंबर दर्ज करें।")
+    }
+
+    // Blood group: required
+    if (!formData.bloodGroup) {
+      e.bloodGroup = txt("Blood group is required.","रक्त समूह आवश्यक है।")
+    }
+
     // Pin code: must be exactly 6 digits
     if (!formData.pinCode?.trim()) {
       e.pinCode = txt("Pin code is required.","पिन कोड आवश्यक है।")
@@ -469,6 +518,13 @@ export default function IdCardForm({
         if (!value) return t(txt("Mobile number is required.","मोबाइल नंबर आवश्यक है।"))
         if (!/^\d{10}$/.test(String(value))) return t(txt("Enter a valid 10-digit mobile number.","मान्य 10-अंकीय मोबाइल नंबर दर्ज करें।"))
         return null
+      case "aadhaarNumber":
+        if (!value) return t(txt("Aadhaar number is required.","आधार नंबर आवश्यक है।"))
+        if (!/^\d{12}$/.test(String(value))) return t(txt("Enter a valid 12-digit Aadhaar number.","मान्य 12-अंकीय आधार नंबर दर्ज करें।"))
+        return null
+      case "bloodGroup":
+        if (!value) return t(txt("Blood group is required.","रक्त समूह आवश्यक है।"))
+        return null
       case "pinCode":
         if (!String(value).trim()) return t(txt("Pin code is required.","पिन कोड आवश्यक है।"))
         if (!/^\d{6}$/.test(String(value).trim())) return t(txt("Enter a valid 6-digit pin code.","मान्य 6-अंकीय पिन कोड दर्ज करें।"))
@@ -519,6 +575,13 @@ export default function IdCardForm({
     else if (!/\S+@\S+\.\S+/.test(formData.email)) fullErrors.email = txt("Enter a valid email.","मान्य ईमेल दर्ज करें।")
     if (!formData.mobileNumber) fullErrors.mobileNumber = txt("Mobile number is required.","मोबाइल नंबर आवश्यक है।")
     else if (!/^\d{10}$/.test(formData.mobileNumber)) fullErrors.mobileNumber = txt("Enter a valid 10-digit mobile number.","मान्य 10-अंकीय मोबाइल नंबर दर्ज करें।")
+
+    // Aadhaar + bloodgroup checks
+    if (!formData.aadhaarNumber) fullErrors.aadhaarNumber = txt("Aadhaar number is required.","आधार नंबर आवश्यक है।")
+    else if (!/^\d{12}$/.test(String(formData.aadhaarNumber))) fullErrors.aadhaarNumber = txt("Enter a valid 12-digit Aadhaar number.","मान्य 12-अंकीय आधार नंबर दर्ज करें।")
+
+    if (!formData.bloodGroup) fullErrors.bloodGroup = txt("Blood group is required.","रक्त समूह आवश्यक है।")
+
     if (!formData.pinCode?.trim()) fullErrors.pinCode = txt("Pin code is required.","पिन कोड आवश्यक है।")
     else if (!/^\d{6}$/.test(formData.pinCode.trim())) fullErrors.pinCode = txt("Enter a valid 6-digit pin code.","मान्य 6-अंकीय पिन कोड दर्ज करें।")
     if (!forwardingOfficer) fullErrors.forwardingOfficer = txt("Select a forwarding officer.","कृपया एक फॉरवर्डिंग अधिकारी चुनें।")
@@ -678,6 +741,9 @@ export default function IdCardForm({
       "state",
       "family.0.name",
       "family.0.age",
+      // NEW keys
+      "aadhaarNumber",
+      "bloodGroup",
     ]
     const newTouched = { ...touched }
     keys.forEach((k) => (newTouched[k] = true))
@@ -731,6 +797,10 @@ export default function IdCardForm({
             if (!primary.name?.trim()) fullErrs["family.0.name"] = txt("Primary member name is required.","प्राथमिक सदस्य का नाम आवश्यक है।")
             if (!primary.age?.trim()) fullErrs["family.0.age"] = txt("Primary member DOB is required.","प्राथमिक सदस्य की जन्मतिथि आवश्यक है।")
           }
+          // new checks snapshot
+          if (!formData.aadhaarNumber) fullErrs.aadhaarNumber = txt("Aadhaar number is required.","आधार नंबर आवश्यक है।")
+          else if (!/^\d{12}$/.test(String(formData.aadhaarNumber))) fullErrs.aadhaarNumber = txt("Enter a valid 12-digit Aadhaar number","मान्य 12-अंकीय आधार नंबर दर्ज करें।")
+          if (!formData.bloodGroup) fullErrs.bloodGroup = txt("Blood group is required.","रक्त समूह आवश्यक है।")
           return fullErrs
         })())[0]
 
@@ -796,12 +866,18 @@ export default function IdCardForm({
       const id = existingId ?? genId()
       const draft = {
         id,
-        formData,
+        // include formData plus a lightweight userPhoto placeholder
+        formData: {
+          ...formData,
+          userPhoto: userPhoto ? (userPhoto instanceof File ? { name: userPhoto.name } : { name: (userPhoto as any).name ?? String(userPhoto) }) : null,
+          signature: signature ? (signature instanceof File ? { name: signature.name } : { name: (signature as any).name ?? String(signature) }) : null,
+        },
         familyMembers: buildPersistableFamily(familyMembers),
         uploadedFilesMeta,
         forwardingOfficer,
         updatedAt: new Date().toISOString(),
       }
+
       localStorage.setItem("idcardDraft", JSON.stringify(draft))
       alert(txt("Draft saved","ड्राफ्ट सहेजा गया"))
       return id
@@ -814,31 +890,11 @@ export default function IdCardForm({
   }
 
   // -------------------- TRANSLATION HELPERS (ADDED) --------------------
-  // This client-side helper attempts to translate text to Hindi and write into the corresponding Hi fields.
-  // Strategy:
-  // 1) Debounce input -> avoid excessive calls while typing.
-  // 2) Try POST /api/translate (recommended: implement server route to call Google Translate / Azure / GCP
-  //    so API keys are not exposed to client). If that fails, fallback to LibreTranslate public endpoint.
-  //
-  // Example server route (Next.js) for /api/translate:
-  // (This is only an example — implement on server and secure your API key)
-  //
-  // // pages/api/translate.ts
-  // export default async function handler(req, res) {
-  //   const { q, target } = req.body
-  //   // use your server-side credential to call Google Translate, e.g. fetch to:
-  //   // https://translation.googleapis.com/language/translate/v2?key=YOUR_KEY
-  //   // or use official Google Cloud SDK on server
-  //   // For now simply proxy to LibreTranslate or implement production translator here.
-  // }
-  //
-  // Client-side implementation (below) will attempt to fetch '/api/translate' then fall back.
   const translateTimeoutRef = useRef<number | null>(null)
   const [translating, setTranslating] = useState({ employee: false, designation: false })
 
   const translateText = async (text: string, target = "hi") => {
     if (!text || !text.trim()) return ""
-    // prefer your server-side endpoint (safer for keys)
     try {
       const res = await fetch("/api/translate", {
         method: "POST",
@@ -847,9 +903,7 @@ export default function IdCardForm({
       })
       if (res.ok) {
         const data = await res.json()
-        // expect data.translatedText (adjust according to your server)
         if (typeof data.translatedText === "string") return data.translatedText
-        // if server returns Google API response style:
         if (data && data.data && data.data.translations && data.data.translations[0]) {
           return data.data.translations[0].translatedText
         }
@@ -860,7 +914,6 @@ export default function IdCardForm({
       console.warn("Call to /api/translate failed:", err)
     }
 
-    // Fallback: LibreTranslate public endpoint (may be rate-limited)
     try {
       const res2 = await fetch("https://libretranslate.de/translate", {
         method: "POST",
@@ -882,15 +935,11 @@ export default function IdCardForm({
       console.warn("LibreTranslate fallback failed:", err)
     }
 
-    // Final fallback: just return original text (or you could attempt naive transliteration)
     return text
   }
 
-  // Debounced call orchestrators
   const scheduleEmployeeTranslate = (text: string) => {
-    // cancel previous
     if (translateTimeoutRef.current) window.clearTimeout(translateTimeoutRef.current)
-    // schedule
     translateTimeoutRef.current = window.setTimeout(async () => {
       try {
         setTranslating((s) => ({ ...s, employee: true }))
@@ -905,9 +954,6 @@ export default function IdCardForm({
   }
 
   const scheduleDesignationTranslate = (text: string) => {
-    // Use a different timer so both can run independently
-    // We'll store them in separate refs (re-using translateTimeoutRef would overwrite)
-    // Create separate ref objects for designation
     if ((scheduleDesignationTranslate as any).timeout) {
       window.clearTimeout((scheduleDesignationTranslate as any).timeout)
     }
@@ -923,8 +969,6 @@ export default function IdCardForm({
       }
     }, 700)
   }
-
-  // --------------------------------------------------------------------
 
   // inline styles (kept same as original)
   const styles = {
@@ -984,6 +1028,63 @@ export default function IdCardForm({
       )}
     </label>
   )
+
+  // ---------------------- PHOTO / SIGNATURE HANDLERS ----------------------
+  const handleUserPhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.currentTarget.files?.[0] ?? null
+    if (!file) return
+    // accept only image types
+    if (!/^image\//.test(file.type)) {
+      alert(txt("Please upload an image file (JPG/PNG).","कृपया एक छवि फ़ाइल अपलोड करें (JPG/PNG)।"))
+      return
+    }
+
+    // revoke previous preview if any
+    try { if (userPhotoPreview) URL.revokeObjectURL(userPhotoPreview) } catch {}
+    setUserPhoto(file)
+    try {
+      const url = URL.createObjectURL(file)
+      setUserPhotoPreview(url)
+    } catch (err) {
+      console.warn("Failed to create object URL for user photo", err)
+      setUserPhotoPreview(null)
+    }
+    // allow selecting same file again
+    if (e.currentTarget) e.currentTarget.value = ""
+  }
+
+  const removeUserPhoto = () => {
+    try { if (userPhotoPreview) URL.revokeObjectURL(userPhotoPreview) } catch {}
+    setUserPhoto(null)
+    setUserPhotoPreview(null)
+  }
+
+  const handleSignatureChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.currentTarget.files?.[0] ?? null
+    if (!file) return
+    if (!/^image\//.test(file.type)) {
+      alert(txt("Please upload an image file for signature (JPG/PNG).","कृपया हस्ताक्षर के लिए एक छवि फ़ाइल अपलोड करें (JPG/PNG)।"))
+      return
+    }
+
+    try { if (signaturePreview) URL.revokeObjectURL(signaturePreview) } catch {}
+    setSignature(file)
+    try {
+      const url = URL.createObjectURL(file)
+      setSignaturePreview(url)
+    } catch (err) {
+      console.warn("Failed to create object URL for signature", err)
+      setSignaturePreview(null)
+    }
+    if (e.currentTarget) e.currentTarget.value = ""
+  }
+
+  const removeSignature = () => {
+    try { if (signaturePreview) URL.revokeObjectURL(signaturePreview) } catch {}
+    setSignature(null)
+    setSignaturePreview(null)
+  }
+  // -----------------------------------------------------------------------
 
   return (
     <main className="min-h-screen py-8" style={{ background: "var(--page-bg, #fafafa)" }}>
@@ -1075,225 +1176,338 @@ export default function IdCardForm({
 
           {/* IMPORTANT: wire form submit to handleSubmit for reliable click/focus handling */}
           <form onSubmit={handleSubmit} className="mt-6 space-y-6" style={{ position: "relative" }}>
-            {/* form fields unchanged */}
-            <div className="grid md:grid-cols-2 gap-6">
-              <div>
-                <RenderLabel text={txt("Purpose of Making ID Card","पहचान पत्र बनाने का उद्देश्य")} required />
-                <select
-                  className="rounded-xl px-4 py-3 w-full"
-                  style={{ border: "1px solid #e6e6e6", background: "white", appearance: "none" }}
-                  value={formData.purpose}
-                  onChange={(e) => {
-                    setFormData((s) => ({ ...s, purpose: e.target.value }))
-                    touch("purpose")
-                  }}
-                  onBlur={() => touch("purpose")}
-                  required
-                >
-                  <option value="">{txt("Select Purpose","उद्देश्य चुनें")}</option>
-                  <option value="new">{txt("New Card","नया कार्ड")}</option>
-                  <option value="promotion">{txt("Promotion","पदोन्नति")}</option>
-                  <option value="lost">{txt("Replacement - Lost","प्रतिस्थापन - खोया हुआ")}</option>
-                </select>
-                {errors.purpose && <div style={styles.errorText}>{errors.purpose}</div>}
-              </div>
 
-              <div>
-                <RenderLabel text={txt("Department","विभाग")} required />
-                <select
-                  className="rounded-xl px-4 py-3 w-full"
-                  style={{ border: "1px solid #e6e6e6", background: "white", appearance: "none" }}
-                  value={formData.department}
-                  onChange={(e) => {
-                    setFormData((s) => ({ ...s, department: e.target.value }))
-                    touch("department")
-                  }}
-                  onBlur={() => touch("department")}
-                  required
-                >
-                  <option value="">{txt("Select","चुनें")}</option>
-                  <option value="engineering">{txt("Engineering","इंजीनियरिंग")}</option>
-                  <option value="operations">{txt("Operations","ऑपरेशंस")}</option>
-                </select>
-                {errors.department && <div style={styles.errorText}>{errors.department}</div>}
-              </div>
+            {/* ====== FINAL LAYOUT: left column = all fields, right column = photo/signature ====== */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
 
-              <div>
-                <RenderLabel text={txt("Unit","यूनिट")} required />
-                <Input className="rounded-xl" value={formData.unit} onChange={(e: any) => { setFormData((s) => ({ ...s, unit: e.target.value })); touch("unit") }} onBlur={() => touch("unit")} required />
-                {errors.unit && <div style={styles.errorText}>{errors.unit}</div>}
-              </div>
+              {/* LEFT: all form fields (spans 2 columns on md+) */}
+              <div className="md:col-span-2 space-y-6">
+                {/* Purpose (kept at top) */}
+                <div>
+                  <RenderLabel text={txt("Purpose of Making ID Card","पहचान पत्र बनाने का उद्देश्य")} required />
+                  <select
+                    className="rounded-xl px-4 py-3 w-full"
+                    style={{ border: "1px solid #e6e6e6", background: "white", appearance: "none" }}
+                    value={formData.purpose}
+                    onChange={(e) => {
+                      setFormData((s) => ({ ...s, purpose: e.target.value }))
+                      touch("purpose")
+                    }}
+                    onBlur={() => touch("purpose")}
+                    required
+                  >
+                    <option value="">{txt("Select Purpose","उद्देश्य चुनें")}</option>
+                    <option value="new">{txt("New Card","नया कार्ड")}</option>
+                    <option value="promotion">{txt("Promotion","पदोन्नति")}</option>
+                    <option value="lost">{txt("Replacement - Lost","प्रतिस्थापन - खोया हुआ")}</option>
+                  </select>
+                  {errors.purpose && <div style={styles.errorText}>{errors.purpose}</div>}
+                </div>
 
-              <div>
-                <RenderLabel text={txt("Employee Name (English)","कर्मचारी का नाम (अंग्रेज़ी)")} required />
-                <Input
-                  className="rounded-xl"
-                  value={formData.employeeNameEn}
-                  onChange={(e: any) => {
-                    const v = e.target.value
-                    setFormData((s) => ({ ...s, employeeNameEn: v }))
-                    touch("employeeNameEn")
-                    // schedule auto-translate
-                    scheduleEmployeeTranslate(v)
-                  }}
-                  onBlur={() => touch("employeeNameEn")}
-                  required
-                />
-                {errors.employeeNameEn && <div style={styles.errorText}>{errors.employeeNameEn}</div>}
-                {/* small hint showing translation status */}
-                <div style={{ marginTop: 6, fontSize: 12, color: "#6b7280" }}>
-                  {translating.employee ? txt("Translating...","अनुवाद हो रहा है...") : txt("Auto-translates to Hindi below","नीचे हिंदी में स्वतः अनुवादित")}
+                {/* remaining fields: keep same md:grid-cols-2 layout inside left column */}
+                <div className="grid md:grid-cols-2 gap-6">
+                  <div>
+                    <RenderLabel text={txt("Department","विभाग")} required />
+                    <select
+                      className="rounded-xl px-4 py-3 w-full"
+                      style={{ border: "1px solid #e6e6e6", background: "white", appearance: "none" }}
+                      value={formData.department}
+                      onChange={(e) => {
+                        setFormData((s) => ({ ...s, department: e.target.value }))
+                        touch("department")
+                      }}
+                      onBlur={() => touch("department")}
+                      required
+                    >
+                      <option value="">{txt("Select","चुनें")}</option>
+                      <option value="engineering">{txt("Engineering","इंजीनियरिंग")}</option>
+                      <option value="operations">{txt("Operations","ऑपरेशंस")}</option>
+                    </select>
+                    {errors.department && <div style={styles.errorText}>{errors.department}</div>}
+                  </div>
+
+                  <div>
+                    <RenderLabel text={txt("Unit","यूनिट")} required />
+                    <Input className="rounded-xl" value={formData.unit} onChange={(e: any) => { setFormData((s) => ({ ...s, unit: e.target.value })); touch("unit") }} onBlur={() => touch("unit")} required />
+                    {errors.unit && <div style={styles.errorText}>{errors.unit}</div>}
+                  </div>
+
+                  <div>
+                    <RenderLabel text={txt("Employee Name (English)","कर्मचारी का नाम (अंग्रेज़ी)")} required />
+                    <Input
+                      className="rounded-xl"
+                      value={formData.employeeNameEn}
+                      onChange={(e: any) => {
+                        const v = e.target.value
+                        setFormData((s) => ({ ...s, employeeNameEn: v }))
+                        touch("employeeNameEn")
+                        // schedule auto-translate
+                        scheduleEmployeeTranslate(v)
+                      }}
+                      onBlur={() => touch("employeeNameEn")}
+                      required
+                    />
+                    {errors.employeeNameEn && <div style={styles.errorText}>{errors.employeeNameEn}</div>}
+                    <div style={{ marginTop: 6, fontSize: 12, color: "#6b7280" }}>
+                      {translating.employee ? txt("Translating...","अनुवाद हो रहा है...") : txt("Auto-translates to Hindi below","नीचे हिंदी में स्वतः अनुवादित")}
+                    </div>
+                  </div>
+
+                  <div>
+                    <RenderLabel text={txt("Employee Name (Hindi)","कर्मचारी का नाम (हिंदी)")} />
+                    <Input
+                      className="rounded-xl"
+                      value={formData.employeeNameHi}
+                      onChange={(e: any) => {
+                        setFormData((s) => ({ ...s, employeeNameHi: e.target.value }))
+                        touch("employeeNameHi")
+                      }}
+                      onBlur={() => touch("employeeNameHi")}
+                    />
+                    <div style={{ marginTop: 6, fontSize: 12, color: "#6b7280" }}>{txt("Automatically filled from English — editable","अंग्रेज़ी से स्वतः भरा गया — संपादन योग्य")}</div>
+                  </div>
+
+                  <div>
+                    <RenderLabel text={txt("Designation (English)","पदोन्नति (अंग्रेज़ी)")} required />
+                    <Input
+                      className="rounded-xl"
+                      value={formData.designationEn}
+                      onChange={(e: any) => {
+                        const v = e.target.value
+                        setFormData((s) => ({ ...s, designationEn: v }))
+                        touch("designationEn")
+                        scheduleDesignationTranslate(v)
+                      }}
+                      onBlur={() => touch("designationEn")}
+                      required
+                    />
+                    {errors.designationEn && <div style={styles.errorText}>{errors.designationEn}</div>}
+                    <div style={{ marginTop: 6, fontSize: 12, color: "#6b7280" }}>
+                      {translating.designation ? txt("Translating...","अनुवाद हो रहा है...") : txt("Auto-translates to Hindi below","नीचे हिंदी में स्वतः अनुवादित")}
+                    </div>
+                  </div>
+
+                  <div>
+                    <RenderLabel text={txt("Designation (Hindi)","पद (हिंदी)")} />
+                    <Input
+                      className="rounded-xl"
+                      value={formData.designationHi}
+                      onChange={(e: any) => {
+                        setFormData((s) => ({ ...s, designationHi: e.target.value }))
+                        touch("designationHi")
+                      }}
+                      onBlur={() => touch("designationHi")}
+                    />
+                    <div style={{ marginTop: 6, fontSize: 12, color: "#6b7280" }}>{txt("Automatically filled from English — editable","अंग्रेज़ी से स्वतः भरा गया — संपादन योग्य")}</div>
+                  </div>
+
+                  <div>
+                    <RenderLabel text={txt("Date of Appointment","नियुक्ति की तारीख")} required />
+                    <Input type="date" className="rounded-xl" value={formData.dateOfAppointment} onChange={(e: any) => { setFormData((s) => ({ ...s, dateOfAppointment: e.target.value })); touch("dateOfAppointment") }} onBlur={() => touch("dateOfAppointment")} required />
+                    {errors.dateOfAppointment && <div style={styles.errorText}>{errors.dateOfAppointment}</div>}
+                  </div>
+
+                  <div>
+                    <RenderLabel text={txt("Nearest RH/HU","नज़दीकी RH/HU")} required />
+                    <Input className="rounded-xl" value={formData.nearestRH} onChange={(e: any) => setFormData((s) => ({ ...s, nearestRH: e.target.value }))} required />
+                  </div>
+
+                  <div>
+                    <RenderLabel text={txt("Place of Work","कार्यस्थल")} required />
+                    <Input className="rounded-xl" value={formData.placeOfWork} onChange={(e: any) => setFormData((s) => ({ ...s, placeOfWork: e.target.value }))} required />
+                  </div>
+
+                  <div>
+                    <RenderLabel text={txt("Pay Level","पे स्तर")} required />
+                    <Input className="rounded-xl" value={formData.payLevel} onChange={(e: any) => setFormData((s) => ({ ...s, payLevel: e.target.value }))} required />
+                  </div>
+
+                  <div>
+                    <RenderLabel text={txt("Email","ईमेल")} required />
+                    <Input
+                      id="email"
+                      name="email"
+                      type="email"
+                      className="rounded-xl"
+                      value={formData.email}
+                      onChange={(e: any) => {
+                        const v = e.target.value
+                        setFormData((s) => ({ ...s, email: v }))
+                        touch("email")
+                      }}
+                      onBlur={() => touch("email")}
+                      required
+                    />
+                    {errors.email && <div style={styles.errorText}>{errors.email}</div>}
+                  </div>
+
+                  <div>
+                    <RenderLabel text={txt("Mobile Number","मोबाइल नंबर")} required />
+                    <Input
+                      id="mobileNumber"
+                      name="mobileNumber"
+                      type="tel"
+                      className="rounded-xl"
+                      value={formData.mobileNumber}
+                      onChange={(e: any) =>
+                        {
+                          const cleaned = String(e.target.value).replace(/\D/g, "").slice(0, 10)
+                          setFormData((s) => ({
+                            ...s,
+                            mobileNumber: cleaned,
+                          }))
+                          touch("mobileNumber")
+                        }
+                      }
+                      onBlur={() => touch("mobileNumber")}
+                      placeholder={txt("Enter 10-digit mobile","10-अंकीय मोबाइल दर्ज करें")}
+                      maxLength={10}
+                      required
+                    />
+                    {errors.mobileNumber && <div style={styles.errorText}>{errors.mobileNumber}</div>}
+
+                  </div>
+
+                  <div>
+                    <RenderLabel text={txt("Aadhaar Number","आधार नंबर")} required />
+                    <Input
+                      id="aadhaarNumber"
+                      name="aadhaarNumber"
+                      type="text"
+                      className="rounded-xl"
+                      value={formData.aadhaarNumber}
+                      onChange={(e: any) => {
+                        const cleaned = String(e.target.value).replace(/\D/g, "").slice(0, 12)
+                        setFormData((s) => ({ ...s, aadhaarNumber: cleaned }))
+                        touch("aadhaarNumber")
+                      }}
+                      onBlur={() => touch("aadhaarNumber")}
+                      placeholder={txt("12-digit Aadhaar number","12-अंकीय आधार नंबर")}
+                      maxLength={12}
+                      required
+                    />
+                    {errors.aadhaarNumber && <div style={styles.errorText}>{errors.aadhaarNumber}</div>}
+                  </div>
+
+                  <div>
+                    <RenderLabel text={txt("Blood Group","रक्त समूह")} required />
+                    <select
+                      id="bloodGroup"
+                      name="bloodGroup"
+                      value={formData.bloodGroup}
+                      onChange={(e) => { setFormData((s) => ({ ...s, bloodGroup: e.target.value })); touch("bloodGroup") }}
+                      onBlur={() => touch("bloodGroup")}
+                      className="rounded-xl px-4 py-3 w-full"
+                      style={{ border: "1px solid #e6e6e6", background: "white", appearance: "none" }}
+                      required
+                    >
+                      <option value="">{txt("Select Blood Group","रक्त समूह चुनें")}</option>
+                      <option value="A+">A+</option>
+                      <option value="A-">A-</option>
+                      <option value="B+">B+</option>
+                      <option value="B-">B-</option>
+                      <option value="AB+">AB+</option>
+                      <option value="AB-">AB-</option>
+                      <option value="O+">O+</option>
+                      <option value="O-">O-</option>
+                    </select>
+                    {errors.bloodGroup && <div style={styles.errorText}>{errors.bloodGroup}</div>}
+                  </div>
+
+                  <div>
+                    <RenderLabel text={txt("Pin Code","पिन कोड")} required />
+                    <Input
+                      id="pinCode"
+                      name="pinCode"
+                      className="rounded-xl"
+                      value={formData.pinCode}
+                      onChange={(e: any) => { const cleaned = String(e.target.value).replace(/\D/g, "").slice(0, 6); setFormData((s) => ({ ...s, pinCode: cleaned })); touch("pinCode") }}
+                      onBlur={() => touch("pinCode")}
+                      placeholder={txt("6-digit pin code","6-अंकीय पिन कोड")}
+                      maxLength={6}
+                      required
+                    />
+                    {errors.pinCode && <div style={styles.errorText}>{errors.pinCode}</div>}
+
+                  </div>
+
+                  <div>
+                    <RenderLabel text={txt("District","जिला")} required />
+                    <Input className="rounded-xl" value={formData.district} onChange={(e: any) => { setFormData((s) => ({ ...s, district: e.target.value })); touch("district") }} onBlur={() => touch("district")} required />
+                  </div>
+
+                  <div>
+                    <RenderLabel text={txt("State","राज्य")} required />
+                    <Input className="rounded-xl" value={formData.state} onChange={(e: any) => { setFormData((s) => ({ ...s, state: e.target.value })); touch("state") }} onBlur={() => touch("state")} required />
+                  </div>
+
+                  <div>
+                    <RenderLabel text={txt("ID Card No (if applicable)","आईडी कार्ड नंबर (यदि लागू हो)")} />
+                    <Input className="rounded-xl" value={formData.idCardNo} onChange={(e: any) => setFormData((s) => ({ ...s, idCardNo: e.target.value }))} />
+                  </div>
                 </div>
               </div>
 
-              {/* NEW: Employee Name Hindi (always present so user can edit or override auto-translation) */}
-              <div>
-                <RenderLabel text={txt("Employee Name (Hindi)","कर्मचारी का नाम (हिंदी)")} />
-                <Input
-                  className="rounded-xl"
-                  value={formData.employeeNameHi}
-                  onChange={(e: any) => {
-                    setFormData((s) => ({ ...s, employeeNameHi: e.target.value }))
-                    // if user edits Hindi manually, mark touched if desired
-                    touch("employeeNameHi")
-                  }}
-                  onBlur={() => touch("employeeNameHi")}
-                />
-                <div style={{ marginTop: 6, fontSize: 12, color: "#6b7280" }}>{txt("Automatically filled from English — editable","अंग्रेज़ी से स्वतः भरा गया — संपादन योग्य")}</div>
-              </div>
+              {/* RIGHT: Photo + Signature (unchanged) */}
+              <div className="md:col-span-1 flex flex-col items-center gap-6">
+                <div style={{ width: 220, display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
+                  <div
+                    style={{
+                      width: 220,
+                      height: 260,
+                      borderRadius: 12,
+                      overflow: "hidden",
+                      background: "#f3f4f6",
+                      border: "1px solid #e5e7eb",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    {userPhotoPreview ? (
+                      <img
+                        src={userPhotoPreview}
+                        alt="User photo"
+                        style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                      />
+                    ) : (
+                      <div style={{ color: "#6b7280", textAlign: "center", padding: 8 }}>{txt("No photo chosen","कोई फोटो नहीं चुना")}</div>
+                    )}
+                  </div>
 
-              <div>
-                <RenderLabel text={txt("Designation (English)","पदोन्नति (अंग्रेज़ी)")} required />
-                <Input
-                  className="rounded-xl"
-                  value={formData.designationEn}
-                  onChange={(e: any) => {
-                    const v = e.target.value
-                    setFormData((s) => ({ ...s, designationEn: v }))
-                    touch("designationEn")
-                    scheduleDesignationTranslate(v)
-                  }}
-                  onBlur={() => touch("designationEn")}
-                  required
-                />
-                {errors.designationEn && <div style={styles.errorText}>{errors.designationEn}</div>}
-                <div style={{ marginTop: 6, fontSize: 12, color: "#6b7280" }}>
-                  {translating.designation ? txt("Translating...","अनुवाद हो रहा है...") : txt("Auto-translates to Hindi below","नीचे हिंदी में स्वतः अनुवादित")}
+                  <label
+                    htmlFor="photoUpload"
+                    className="rounded-xl px-4 py-3"
+                    style={{ background: "#0b3355", color: "white", cursor: "pointer", fontWeight: 600 }}
+                  >
+                    {txt("Choose Photo","फोटो चुनें")}
+                  </label>
+                  <input id="photoUpload" type="file" accept="image/*" onChange={handleUserPhotoChange} style={{ display: "none" }} />
+
+                  <div style={{ fontSize: 12, color: "#6b7280", textAlign: "center" }}>{txt("Used in application preview","पूर्वावलोकन में उपयोग होता है")}</div>
+
+                  {/* SIGNATURE below photo */}
+                  <div style={{ width: "100%", marginTop: 8, display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
+                    <div style={{ width: 180, height: 80, borderRadius: 10, overflow: "hidden", background: "#f3f4f6", border: "1px solid #e5e7eb", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      {signaturePreview ? (
+                        <img src={signaturePreview} alt="Signature" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+                      ) : (
+                        <div style={{ color: "#6b7280", textAlign: "center", padding: 8 }}>{txt("No signature chosen","कोई हस्ताक्षर नहीं चुना")}</div>
+                      )}
+                    </div>
+
+                    <label
+                      htmlFor="signatureUpload"
+                      className="rounded-xl px-4 py-3"
+                      style={{ background: "#0b3355", color: "white", cursor: "pointer", fontWeight: 600 }}
+                    >
+                      {txt("Choose Signature","हस्ताक्षर चुनें")}
+                    </label>
+                    <input id="signatureUpload" type="file" accept="image/*" onChange={handleSignatureChange} style={{ display: "none" }} />
+
+                    <div style={{ fontSize: 12, color: "#6b7280", textAlign: "center" }}>{txt("Used in application preview","पूर्वावलोकन में उपयोग होता है")}</div>
+                  </div>
                 </div>
-              </div>
-
-              {/* NEW: Designation Hindi */}
-              <div>
-                <RenderLabel text={txt("Designation (Hindi)","पद (हिंदी)")} />
-                <Input
-                  className="rounded-xl"
-                  value={formData.designationHi}
-                  onChange={(e: any) => {
-                    setFormData((s) => ({ ...s, designationHi: e.target.value }))
-                    touch("designationHi")
-                  }}
-                  onBlur={() => touch("designationHi")}
-                />
-                <div style={{ marginTop: 6, fontSize: 12, color: "#6b7280" }}>{txt("Automatically filled from English — editable","अंग्रेज़ी से स्वतः भरा गया — संपादन योग्य")}</div>
-              </div>
-
-              <div>
-                <RenderLabel text={txt("Date of Appointment","नियुक्ति की तारीख")} required />
-                <Input type="date" className="rounded-xl" value={formData.dateOfAppointment} onChange={(e: any) => { setFormData((s) => ({ ...s, dateOfAppointment: e.target.value })); touch("dateOfAppointment") }} onBlur={() => touch("dateOfAppointment")} required />
-                {errors.dateOfAppointment && <div style={styles.errorText}>{errors.dateOfAppointment}</div>}
-              </div>
-
-              <div>
-                <RenderLabel text={txt("Nearest RH/HU","नज़दीकी RH/HU")} required />
-                <Input className="rounded-xl" value={formData.nearestRH} onChange={(e: any) => setFormData((s) => ({ ...s, nearestRH: e.target.value }))} required />
-              </div>
-
-              <div>
-                <RenderLabel text={txt("Place of Work","कार्यस्थल")} required />
-                <Input className="rounded-xl" value={formData.placeOfWork} onChange={(e: any) => setFormData((s) => ({ ...s, placeOfWork: e.target.value }))} required />
-              </div>
-
-              <div>
-                <RenderLabel text={txt("Pay Level","पे स्तर")} required />
-                <Input className="rounded-xl" value={formData.payLevel} onChange={(e: any) => setFormData((s) => ({ ...s, payLevel: e.target.value }))} required />
-              </div>
-
-              <div>
-                <RenderLabel text={txt("Email","ईमेल")} required />
-                <Input
-                  id="email"
-                  name="email"
-                  type="email"
-                  className="rounded-xl"
-                  value={formData.email}
-                  onChange={(e: any) => {
-                    const v = e.target.value
-                    setFormData((s) => ({ ...s, email: v }))
-                    touch("email")
-                  }}
-                  onBlur={() => touch("email")}
-                  required
-                />
-                {errors.email && <div style={styles.errorText}>{errors.email}</div>}
-              </div>
-
-              <div>
-                <RenderLabel text={txt("Mobile Number","मोबाइल नंबर")} required />
-                <Input
-                  id="mobileNumber"
-                  name="mobileNumber"
-                  type="tel"
-                  className="rounded-xl"
-                  value={formData.mobileNumber}
-                  onChange={(e: any) =>
-                    {
-                      const cleaned = String(e.target.value).replace(/\D/g, "").slice(0, 10)
-                      setFormData((s) => ({
-                        ...s,
-                        mobileNumber: cleaned,
-                      }))
-                      touch("mobileNumber")
-                    }
-                  }
-                  onBlur={() => touch("mobileNumber")}
-                  placeholder={txt("Enter 10-digit mobile","10-अंकीय मोबाइल दर्ज करें")}
-                  maxLength={10}
-                  required
-                />
-                {errors.mobileNumber && <div style={styles.errorText}>{errors.mobileNumber}</div>}
-
-              </div>
-
-              <div>
-                <RenderLabel text={txt("Pin Code","पिन कोड")} required />
-                <Input
-                  id="pinCode"
-                  name="pinCode"
-                  className="rounded-xl"
-                  value={formData.pinCode}
-                  onChange={(e: any) => { const cleaned = String(e.target.value).replace(/\D/g, "").slice(0, 6); setFormData((s) => ({ ...s, pinCode: cleaned })); touch("pinCode") }}
-                  onBlur={() => touch("pinCode")}
-                  placeholder={txt("6-digit pin code","6-अंकीय पिन कोड")}
-                  maxLength={6}
-                  required
-                />
-                {errors.pinCode && <div style={styles.errorText}>{errors.pinCode}</div>}
-
-              </div>
-
-              <div>
-                <RenderLabel text={txt("District","जिला")} required />
-                <Input className="rounded-xl" value={formData.district} onChange={(e: any) => { setFormData((s) => ({ ...s, district: e.target.value })); touch("district") }} onBlur={() => touch("district")} required />
-              </div>
-
-              <div>
-                <RenderLabel text={txt("State","राज्य")} required />
-                <Input className="rounded-xl" value={formData.state} onChange={(e: any) => { setFormData((s) => ({ ...s, state: e.target.value })); touch("state") }} onBlur={() => touch("state")} required />
-              </div>
-
-              <div>
-                <RenderLabel text={txt("ID Card No (if applicable)","आईडी कार्ड नंबर (यदि लागू हो)")} />
-                <Input className="rounded-xl" value={formData.idCardNo} onChange={(e: any) => setFormData((s) => ({ ...s, idCardNo: e.target.value }))} />
               </div>
             </div>
 
@@ -1459,8 +1673,6 @@ export default function IdCardForm({
                 {txt("Save Draft","ड्राफ्ट सहेजें")}
               </button>
 
-              {/* Defensive: keep type=submit, but ALSO attach an onClick handler that stops propagation and calls handleSubmit.
-                  Also bring the button visually forward with z-index and position. */}
               <button
                 ref={submitBtnRef}
                 type="submit"
@@ -1475,7 +1687,6 @@ export default function IdCardForm({
                   handleSubmit(ev)
                 }}
                 onMouseDown={(ev) => {
-                  // call early on pointer down too — covers cases where overlays intercept click but not pointerdown
                   try {
                     ev.preventDefault()
                     ev.stopPropagation()
@@ -1483,7 +1694,6 @@ export default function IdCardForm({
                   handleSubmit(ev)
                 }}
                 onKeyDown={(ev) => {
-                  // support Enter key from keyboard
                   if ((ev as any).key === "Enter") {
                     ev.preventDefault()
                     ev.stopPropagation()
@@ -1497,7 +1707,7 @@ export default function IdCardForm({
                   color: "white",
                   fontWeight: 600,
                   position: "relative",
-                  zIndex: 2000, // bring to front to avoid being visually covered
+                  zIndex: 2000,
                   pointerEvents: "auto",
                 }}
                 aria-disabled={false}

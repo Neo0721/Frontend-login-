@@ -6,22 +6,21 @@ import { Input } from "@/components/ui/input";
 
 import { ArrowLeft } from "lucide-react";
 
-
 interface ForgotPasswordProps {
   onNavigate: (view: any, payload?: any) => void;
   language: "en" | "hi";
 }
 
 export default function ForgotPassword({ onNavigate, language }: ForgotPasswordProps) {
-  const [step, setStep] = useState<"emp" | "otp" | "reset">("emp");
-  const [empNo, setEmpNo] = useState<string>("");
+  const [step, setStep] = useState<"mobile" | "otp" | "reset">("mobile");
+  const [mobile, setMobile] = useState<string>("");
   const [otp, setOtp] = useState<string>("");
   const [newPwd, setNewPwd] = useState<string>("");
   const [confirmPwd, setConfirmPwd] = useState<string>("");
 
   // validation state
   const [errors, setErrors] = useState<{
-    empNo?: string;
+    mobile?: string;
     otp?: string;
     newPwd?: string;
     confirmPwd?: string;
@@ -35,6 +34,25 @@ export default function ForgotPassword({ onNavigate, language }: ForgotPasswordP
     hasSpecialChar: false,
   });
   const [passwordStrength, setPasswordStrength] = useState(0);
+
+  const txt = {
+    back: language === "en" ? "Back" : "वापस",
+    forgotPassword: language === "en" ? "Forgot Password" : "पासवर्ड भूल गए",
+    enterMobile: language === "en" ? "Enter Mobile Number" : "मोबाइल नंबर दर्ज करें",
+    enterOTP: language === "en" ? "Enter OTP" : "OTP दर्ज करें",
+    resetPassword: language === "en" ? "Reset Password" : "पासवर्ड रीसेट करें",
+    sendOTP: language === "en" ? "Send OTP" : "OTP भेजें",
+    verifyOTP: language === "en" ? "Verify OTP" : "OTP सत्यापित करें",
+    newPassword: language === "en" ? "New Password" : "नया पासवर्ड",
+    confirmPassword: language === "en" ? "Confirm Password" : "पासवर्ड की पुष्टि करें",
+    enterMobileAlert: language === "en" ? "Enter mobile number" : "मोबाइल नंबर दर्ज करें",
+    invalidMobile: language === "en" ? "Enter a valid 10-digit mobile number" : "मान्य 10-अंकीय मोबाइल नंबर दर्ज करें",
+    enterOTPAlert: language === "en" ? "Enter OTP" : "OTP दर्ज करें",
+    passwordResetSuccess: language === "en" ? "Password reset successfully!" : "पासवर्ड सफलतापूर्वक रीसेट हुआ!",
+    fillAllFields: language === "en" ? "Fill all fields" : "सभी फ़ील्ड भरें",
+    passwordsNotMatch: language === "en" ? "Passwords do not match" : "पासवर्ड मेल नहीं खाते",
+    employeeMobileNote: language === "en" ? "OTP will be sent to the mobile number" : "OTP मोबाइल नंबर पर भेजा जाएगा",
+  };
 
   const validatePassword = (pwd: string) => {
     const validation = {
@@ -62,65 +80,68 @@ export default function ForgotPassword({ onNavigate, language }: ForgotPasswordP
     return Object.values(validation).every(Boolean);
   };
 
-  // helpers for empNo/otp inputs
+  // helpers for inputs
   const sanitizeDigits = (v: string) => v.replace(/\D/g, "");
 
   /* -------------------------
-      STEP 1 → Enter Employee No
+      STEP 1 → Enter Mobile Number
   --------------------------*/
-  if (step === "emp") {
+  if (step === "mobile") {
     return (
       <div className="min-h-screen flex items-center justify-center p-6">
         <div className="max-w-md w-full">
           <Button variant="ghost" onClick={() => onNavigate("login-password")} className="mb-6 text-[#002B5C]">
             <ArrowLeft className="w-4 h-4 mr-2" />
-            Back
+            {txt.back}
           </Button>
 
           <div className="bg-white shadow-md p-8 rounded-xl border">
             <h2 className="text-2xl font-bold text-center text-[#002B5C] mb-4">
-              Forgot Password
+              {txt.forgotPassword}
             </h2>
 
             <Input
-              placeholder="Enter Employee Number"
-              value={empNo}
+              placeholder={txt.enterMobile}
+              value={mobile}
               onChange={(e) => {
-                const digits = sanitizeDigits(e.target.value).slice(0, 20); // limit length to 20
-                setEmpNo(digits);
+                const digits = sanitizeDigits(e.target.value).slice(0, 10); // limit length to 10
+                setMobile(digits);
                 setErrors((prev) => {
                   const next = { ...prev };
-                  if (!digits) next.empNo = language === "en" ? "Employee number must be in digits" : "कर्मचारी संख्या अंकों में होनी चाहिए";
-                  else delete next.empNo;
+                  if (!digits) next.mobile = language === "en" ? "Mobile number is required" : "मोबाइल नंबर आवश्यक है";
+                  else if (!/^\d{10}$/.test(digits)) next.mobile = txt.invalidMobile;
+                  else delete next.mobile;
                   return next;
                 });
               }}
-              // restrict paste/key input via pattern + inputMode where possible
               inputMode="numeric"
               className="mb-4"
-              maxLength={20}
+              maxLength={10}
             />
-            {errors.empNo && <p className="text-xs text-red-600 mb-3">{errors.empNo}</p>}
+            {errors.mobile && <p className="text-xs text-red-600 mb-3">{errors.mobile}</p>}
+
+            <div className="text-xs text-gray-500 mb-3">{txt.employeeMobileNote}</div>
 
             <Button
               onClick={() => {
-                if (!empNo) {
-                  setErrors((prev) => ({ ...prev, empNo: language === "en" ? "Enter employee number" : "कर्मचारी संख्या दर्ज करें" }));
+                if (!mobile) {
+                  setErrors((prev) => ({ ...prev, mobile: txt.enterMobileAlert }));
                   return;
                 }
-                // final check: digits only
-                if (!/^\d+$/.test(empNo)) {
-                  setErrors((prev) => ({ ...prev, empNo: language === "en" ? "Employee number must contain only digits" : "कर्मचारी संख्या में केवल अंक होने चाहिए" }));
+                // final check: 10 digits
+                if (!/^\d{10}$/.test(mobile)) {
+                  setErrors((prev) => ({ ...prev, mobile: txt.invalidMobile }));
                   return;
                 }
 
-                // proceed to OTP step (in real app you'd request/send OTP)
+                // proceed to OTP step (in real app you'd request/send OTP to the mobile)
                 setErrors({});
+                // Here you would call your API to send OTP to the mobile number
                 setStep("otp");
               }}
               className="w-full bg-[#002B5C] hover:bg-blue-900 text-white"
             >
-              Send OTP
+              {txt.sendOTP}
             </Button>
           </div>
         </div>
@@ -131,48 +152,55 @@ export default function ForgotPassword({ onNavigate, language }: ForgotPasswordP
   /* -------------------------
       STEP 2 → OTP Screen
   --------------------------*/
-  /* -------------------------
-    STEP 2 → OTP Screen
---------------------------*/
-if (step === "otp") {
-  return (
-    <div className="min-h-screen flex items-center justify-center p-6">
-      <div className="max-w-md w-full">
+  if (step === "otp") {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-6">
+        <div className="max-w-md w-full">
 
-        <Button variant="ghost" onClick={() => setStep("emp")} className="mb-6 text-[#002B5C]">
-          <ArrowLeft className="w-4 h-4 mr-2" />
-          Back
-        </Button>
-
-        <div className="bg-white shadow-md p-8 rounded-xl border">
-          <h2 className="text-2xl font-bold text-center text-[#002B5C] mb-4">
-            Enter OTP
-          </h2>
-
-          <Input
-            placeholder="Enter OTP"
-            value={otp}
-            onChange={(e) => setOtp(e.target.value)}
-            className="mb-4"
-          />
-
-          <Button
-            onClick={() => {
-              if (!otp) return alert("Enter OTP");
-              // No restrictions — allow any OTP
-              setStep("reset");
-            }}
-            className="w-full bg-[#002B5C] hover:bg-blue-900 text-white"
-          >
-            Verify OTP
+          <Button variant="ghost" onClick={() => setStep("mobile")} className="mb-6 text-[#002B5C]">
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            {txt.back}
           </Button>
+
+          <div className="bg-white shadow-md p-8 rounded-xl border">
+            <h2 className="text-2xl font-bold text-center text-[#002B5C] mb-4">
+              {txt.enterOTP}
+            </h2>
+
+            <div className="text-center text-sm text-slate-600 mb-4">
+              {language === "en"
+                ? `OTP sent to +91-${mobile.slice(0, 3)}-${mobile.slice(3, 6)}-${mobile.slice(6)}`
+                : `OTP भेजा गया: +91-${mobile.slice(0, 3)}-${mobile.slice(3, 6)}-${mobile.slice(6)}`}
+            </div>
+
+            <Input
+              placeholder={txt.enterOTP}
+              value={otp}
+              onChange={(e) => setOtp(sanitizeDigits(e.target.value).slice(0, 6))}
+              className="mb-4"
+              maxLength={6}
+              inputMode="numeric"
+            />
+
+            <Button
+              onClick={() => {
+                if (!otp) {
+                  alert(txt.enterOTPAlert);
+                  return;
+                }
+                // No restrictions — allow any OTP for now (replace with real verification)
+                setStep("reset");
+              }}
+              className="w-full bg-[#002B5C] hover:bg-blue-900 text-white"
+            >
+              {txt.verifyOTP}
+            </Button>
+          </div>
+
         </div>
-
       </div>
-    </div>
-  );
-}
-
+    );
+  }
 
   /* -------------------------
       STEP 3 → Reset Password
@@ -183,17 +211,17 @@ if (step === "otp") {
         <div className="max-w-md w-full">
           <Button variant="ghost" onClick={() => setStep("otp")} className="mb-6 text-[#002B5C]">
             <ArrowLeft className="w-4 h-4 mr-2" />
-            Back
+            {txt.back}
           </Button>
 
           <div className="bg-white shadow-md p-8 rounded-xl border">
             <h2 className="text-2xl font-bold text-center text-[#002B5C] mb-4">
-              Reset Password
+              {txt.resetPassword}
             </h2>
 
             <Input
               type="password"
-              placeholder="New Password"
+              placeholder={txt.newPassword}
               value={newPwd}
               onChange={(e) => {
                 const v = e.target.value;
@@ -244,7 +272,7 @@ if (step === "otp") {
 
             <Input
               type="password"
-              placeholder="Confirm Password"
+              placeholder={txt.confirmPassword}
               value={confirmPwd}
               onChange={(e) => {
                 const v = e.target.value;
@@ -266,11 +294,11 @@ if (step === "otp") {
               onClick={() => {
                 // final client-side checks
                 if (!newPwd || !confirmPwd) {
-                  setErrors((prev) => ({ ...prev, newPwd: language === "en" ? "Fill all fields" : "सभी फ़ील्ड भरें" }));
+                  setErrors((prev) => ({ ...prev, newPwd: txt.fillAllFields }));
                   return;
                 }
                 if (newPwd !== confirmPwd) {
-                  setErrors((prev) => ({ ...prev, confirmPwd: language === "en" ? "Passwords do not match" : "पासवर्ड मेल नहीं खाते" }));
+                  setErrors((prev) => ({ ...prev, confirmPwd: txt.passwordsNotMatch }));
                   return;
                 }
                 if (!validatePassword(newPwd)) {
@@ -279,7 +307,7 @@ if (step === "otp") {
                 }
 
                 // success (replace with real API call in production)
-                alert(language === "en" ? "Password reset successfully!" : "पासवर्ड सफलतापूर्वक रीसेट हुआ!");
+                alert(txt.passwordResetSuccess);
                 onNavigate("login-password");
               }}
               disabled={
@@ -290,7 +318,7 @@ if (step === "otp") {
               }
               className="w-full bg-[#2E7D32] hover:bg-green-700 text-white"
             >
-              Reset Password
+              {language === "en" ? "Reset Password" : "पासवर्ड रीसेट करें"}
             </Button>
           </div>
         </div>
