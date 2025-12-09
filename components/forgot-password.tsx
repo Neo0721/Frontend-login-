@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 
 import { ArrowLeft } from "lucide-react";
 
+
 interface ForgotPasswordProps {
   onNavigate: (view: any, payload?: any) => void;
   language: "en" | "hi";
