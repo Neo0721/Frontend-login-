@@ -33,15 +33,22 @@ type UploadedFileMeta = {
 
 export default function IdCardForm({
   onNavigate,
-  language,
+  language = "en", // <- default to en
   onCancel,
   onSubmitSuccess,
   initialData = null,
   mode = "create",
 }: IdCardFormProps) {
   const router = useRouter()
-  const txt = (en: string, hi?: string) => (language === "en" ? en : hi ?? en)
+   const normLang = String(language ?? "en").trim().toLowerCase()
+  const txt = (en: string, hi?: string) => (normLang === "en" ? en : hi ?? en)
 
+  useEffect(() => {
+    // remove this console.log in production
+    // eslint-disable-next-line no-console
+    console.log("[IdCardForm] language prop =", language, "normalized:", normLang)
+  }, [language, normLang])
+  
   const [expanded, setExpanded] = useState<Record<string, boolean>>({
     A: true,
     B: false,
@@ -56,14 +63,14 @@ export default function IdCardForm({
   const documentCategories = [
     {
       id: "A",
-      title: txt("A. New Appointment / Transfer"),
-      docs: [txt("Memorandum / Transfer Letter Copy"), txt("Charge Report Copy"), txt("Current Address Proof Copy")],
+      title: txt("A. New Appointment / Transfer", "A. नई नियुक्ति / स्थानांतरण"),
+      docs: [txt("Memorandum / Transfer Letter Copy", "स्मरण / स्थानांतरण पत्र की प्रतिलिपि"), txt("Charge Report Copy", "चार्ज रिपोर्ट प्रतिलिपि"), txt("Current Address Proof Copy", "वर्तमान पता प्रमाण प्रतिलिपि")],
     },
-    { id: "B", title: txt("B. Promotion"), docs: [txt("Promotion Order Copy"), txt("Old Identity Card Copy both sides")] },
-    { id: "C", title: txt("C. Lost Identity Card"), docs: [txt("Police Complaint Certificate Copy"), txt("Rs.100/- Money Receipt"), txt("Current Address Proof Copy")] },
-    { id: "D", title: txt("D. Damage Card"), docs: [txt("Rs.100/- Money Receipt"),  txt("Identity Card Copy both sides")] },
-    { id: "E", title: txt("E. Inclusion of Dependents / Family Members"), docs: [ txt(" Address Proof Copy"), txt("Marriage / Death / Birth Certificate")] },
-    { id: "F", title: txt("F. Correction"), docs: [txt("Rs.100/- Money Receipt"), txt("Identity Card Copy both sides"), txt(" Correction Documents")] },
+    { id: "B", title: txt("B. Promotion", "B. पदोन्नति"), docs: [txt("Promotion Order Copy", "पदोन्नति आदेश प्रतिलिपि"), txt("Old Identity Card Copy both sides", "पुराना पहचान पत्र (दोनों पक्ष)")] },
+    { id: "C", title: txt("C. Lost Identity Card", "C. खोया हुआ पहचान पत्र"), docs: [txt("Police Complaint Certificate Copy", "पुलिस शिकायत प्रमाण पत्र प्रतिलिपि"), txt("Rs.100/- Money Receipt", "₹100/- रसीद"), txt("Current Address Proof Copy", "वर्तमान पता प्रमाण प्रतिलिपि")] },
+    { id: "D", title: txt("D. Damage Card", "D. क्षतिग्रस्त कार्ड"), docs: [txt("Rs.100/- Money Receipt", "₹100/- रसीद"),  txt("Identity Card Copy both sides", "पहचान पत्र प्रतिलिपि (दोनों पक्ष)")] },
+    { id: "E", title: txt("E. Inclusion of Dependents / Family Members", "E. आश्रित / परिवार के सदस्यों को शामिल करना"), docs: [ txt(" Address Proof Copy", "पता प्रमाण प्रतिलिपि"), txt("Marriage / Death / Birth Certificate", "विवाह / मृत्यु / जन्म प्रमाण पत्र")] },
+    { id: "F", title: txt("F. Correction", "F. सुधार"), docs: [txt("Rs.100/- Money Receipt", "₹100/- रसीद"), txt("Identity Card Copy both sides", "पहचान पत्र प्रतिलिपि (दोनों पक्ष)"), txt(" Correction Documents", "सुधार दस्तावेज़")] },
   ]
 
   // state
@@ -82,6 +89,7 @@ export default function IdCardForm({
     },
   ])
   const [forwardingOfficer, setForwardingOfficer] = useState("")
+
   const [formData, setFormData] = useState({
     purpose: "",
     department: "",
@@ -336,12 +344,12 @@ export default function IdCardForm({
   const removeFamilyMember = (id: string) =>
     setFamilyMembers((p) => {
       if (p.length === 1) {
-        alert(txt("You must have at least one family member."))
+        alert(txt("You must have at least one family member.","आपके पास कम से कम एक परिवार का सदस्य होना चाहिए।"))
         return p
       }
       const index = p.findIndex((m) => m.id === id)
       if (index === 0) {
-        alert(txt("Primary family member cannot be removed."))
+        alert(txt("Primary family member cannot be removed.","प्राथमिक परिवार के सदस्य को हटाया नहीं जा सकता।"))
         return p
       }
       return p.filter((m) => m.id !== id)
@@ -363,57 +371,57 @@ export default function IdCardForm({
   // ---------- Validation ----------
   const validate = () => {
     const e: Record<string, string> = {}
-    if (!formData.purpose) e.purpose = txt("Purpose is required.")
-    if (!formData.department) e.department = txt("Department is required.")
-    if (!formData.unit?.trim()) e.unit = txt("Unit is required.")
-    if (!formData.employeeNameEn?.trim()) e.employeeNameEn = txt("Employee name is required.")
-    if (!formData.designationEn?.trim()) e.designationEn = txt("Designation is required.")
-    if (!formData.dateOfAppointment) e.dateOfAppointment = txt("Date of appointment is required.")
-    if (!formData.residentialAddress?.trim()) e.residentialAddress = txt("Residential address is required.")
+    if (!formData.purpose) e.purpose = txt("Purpose is required.","उद्देश्य आवश्यक है।")
+    if (!formData.department) e.department = txt("Department is required.","विभाग आवश्यक है।")
+    if (!formData.unit?.trim()) e.unit = txt("Unit is required.","यूनिट आवश्यक है।")
+    if (!formData.employeeNameEn?.trim()) e.employeeNameEn = txt("Employee name is required.","कर्मचारी का नाम आवश्यक है।")
+    if (!formData.designationEn?.trim()) e.designationEn = txt("Designation is required.","पद आवश्यक है।")
+    if (!formData.dateOfAppointment) e.dateOfAppointment = txt("Date of appointment is required.","नियुक्ति की तारीख आवश्यक है।")
+    if (!formData.residentialAddress?.trim()) e.residentialAddress = txt("Residential address is required.","निवास पता आवश्यक है।")
 
     // Email validation (keeps your existing rule)
     if (!formData.email) {
-      e.email = txt("Email is required.")
+      e.email = txt("Email is required.","ईमेल आवश्यक है।")
     } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
-      e.email = txt("Enter a valid email.")
+      e.email = txt("Enter a valid email.","मान्य ईमेल दर्ज करें।")
     }
 
     // Mobile: must be exactly 10 digits
     if (!formData.mobileNumber) {
-      e.mobileNumber = txt("Mobile number is required.")
+      e.mobileNumber = txt("Mobile number is required.","मोबाइल नंबर आवश्यक है।")
     } else if (!/^\d{10}$/.test(formData.mobileNumber)) {
-      e.mobileNumber = txt("Enter a valid 10-digit mobile number.")
+      e.mobileNumber = txt("Enter a valid 10-digit mobile number.","मान्य 10-अंकीय मोबाइल नंबर दर्ज करें।")
     }
 
     // Pin code: must be exactly 6 digits
     if (!formData.pinCode?.trim()) {
-      e.pinCode = txt("Pin code is required.")
+      e.pinCode = txt("Pin code is required.","पिन कोड आवश्यक है।")
     } else if (!/^\d{6}$/.test(formData.pinCode.trim())) {
-      e.pinCode = txt("Enter a valid 6-digit pin code.")
+      e.pinCode = txt("Enter a valid 6-digit pin code.","मान्य 6-अंकीय पिन कोड दर्ज करें।")
     }
 
-    if (!forwardingOfficer) e.forwardingOfficer = txt("Select a forwarding officer.")
-    if (!formData.district?.trim()) e.district = txt("District is required.")
-    if (!formData.state?.trim()) e.state = txt("State is required.")
+    if (!forwardingOfficer) e.forwardingOfficer = txt("Select a forwarding officer.","कृपया एक फॉरवर्डिंग अधिकारी चुनें।")
+    if (!formData.district?.trim()) e.district = txt("District is required.","जिला आवश्यक है।")
+    if (!formData.state?.trim()) e.state = txt("State is required.","राज्य आवश्यक है।")
     if (!familyMembers || familyMembers.length === 0) {
-      e.family = txt("Add at least one family member.")
+      e.family = txt("Add at least one family member.","कम से कम एक परिवार का सदस्य जोड़ें।")
     } else {
       const primary = familyMembers[0]
-      if (!primary.name?.trim()) e["family.0.name"] = txt("Primary member name is required.")
+      if (!primary.name?.trim()) e["family.0.name"] = txt("Primary member name is required.","प्राथमिक सदस्य का नाम आवश्यक है।")
       if (!primary.age?.trim()) {
-        e["family.0.age"] = txt("Primary member DOB is required.")
+        e["family.0.age"] = txt("Primary member DOB is required.","प्राथमिक सदस्य की जन्मतिथि आवश्यक है।")
       } else {
         // check valid date (YYYY-MM-DD) and not in the future
         const dt = new Date(primary.age)
         if (isNaN(dt.getTime())) {
-          e["family.0.age"] = txt("Enter a valid date for primary member DOB.")
+          e["family.0.age"] = txt("Enter a valid date for primary member DOB.","प्राथमिक सदस्य की जन्मतिथि के लिए मान्य तारीख दर्ज करें।")
         } else {
           const today = new Date()
           // normalize times to compare only dates
           const dtNoTime = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate())
           const todayNoTime = new Date(today.getFullYear(), today.getMonth(), today.getDate())
           if (dtNoTime > todayNoTime) {
-            e["family.0.age"] = txt("DOB cannot be in the future.")
+            e["family.0.age"] = txt("DOB cannot be in the future.","जन्मतिथि भविष्य में नहीं हो सकती।")
           }
         }
       }
@@ -433,62 +441,62 @@ export default function IdCardForm({
 
     switch (key) {
       case "purpose":
-        if (!value) return t("Purpose is required.")
+        if (!value) return t(txt("Purpose is required.","उद्देश्य आवश्यक है।"))
         return null
       case "department":
-        if (!value) return t("Department is required.")
+        if (!value) return t(txt("Department is required.","विभाग आवश्यक है।"))
         return null
       case "unit":
-        if (!String(value).trim()) return t("Unit is required.")
+        if (!String(value).trim()) return t(txt("Unit is required.","यूनिट आवश्यक है।"))
         return null
       case "employeeNameEn":
-        if (!String(value).trim()) return t("Employee name is required.")
+        if (!String(value).trim()) return t(txt("Employee name is required.","कर्मचारी का नाम आवश्यक है।"))
         return null
       case "designationEn":
-        if (!String(value).trim()) return t("Designation is required.")
+        if (!String(value).trim()) return t(txt("Designation is required.","पद आवश्यक है।"))
         return null
       case "dateOfAppointment":
-        if (!value) return t("Date of appointment is required.")
+        if (!value) return t(txt("Date of appointment is required.","नियुक्ति की तारीख आवश्यक है।"))
         return null
       case "residentialAddress":
-        if (!String(value).trim()) return t("Residential address is required.")
+        if (!String(value).trim()) return t(txt("Residential address is required.","निवास पता आवश्यक है।"))
         return null
       case "email":
-        if (!value) return t("Email is required.")
-        if (!/\S+@\S+\.\S+/.test(value)) return t("Enter a valid email.")
+        if (!value) return t(txt("Email is required.","ईमेल आवश्यक है।"))
+        if (!/\S+@\S+\.\S+/.test(value)) return t(txt("Enter a valid email.","मान्य ईमेल दर्ज करें।"))
         return null
       case "mobileNumber":
-        if (!value) return t("Mobile number is required.")
-        if (!/^\d{10}$/.test(String(value))) return t("Enter a valid 10-digit mobile number.")
+        if (!value) return t(txt("Mobile number is required.","मोबाइल नंबर आवश्यक है।"))
+        if (!/^\d{10}$/.test(String(value))) return t(txt("Enter a valid 10-digit mobile number.","मान्य 10-अंकीय मोबाइल नंबर दर्ज करें।"))
         return null
       case "pinCode":
-        if (!String(value).trim()) return t("Pin code is required.")
-        if (!/^\d{6}$/.test(String(value).trim())) return t("Enter a valid 6-digit pin code.")
+        if (!String(value).trim()) return t(txt("Pin code is required.","पिन कोड आवश्यक है।"))
+        if (!/^\d{6}$/.test(String(value).trim())) return t(txt("Enter a valid 6-digit pin code.","मान्य 6-अंकीय पिन कोड दर्ज करें।"))
         return null
       case "forwardingOfficer":
-        if (!fo) return t("Select a forwarding officer.")
+        if (!fo) return t(txt("Select a forwarding officer.","कृपया एक फॉरवर्डिंग अधिकारी चुनें।"))
         return null
       case "district":
-        if (!String(value).trim()) return t("District is required.")
+        if (!String(value).trim()) return t(txt("District is required.","जिला आवश्यक है।"))
         return null
       case "state":
-        if (!String(value).trim()) return t("State is required.")
+        if (!String(value).trim()) return t(txt("State is required.","राज्य आवश्यक है।"))
         return null
 
       case "family.0.name": {
         const primary = fam[0]
-        if (!primary?.name?.trim()) return t("Primary member name is required.")
+        if (!primary?.name?.trim()) return t(txt("Primary member name is required.","प्राथमिक सदस्य का नाम आवश्यक है।"))
         return null
       }
       case "family.0.age": {
         const primary = fam[0]
-        if (!primary?.age?.trim()) return t("Primary member DOB is required.")
+        if (!primary?.age?.trim()) return t(txt("Primary member DOB is required.","प्राथमिक सदस्य की जन्मतिथि आवश्यक है।"))
         const dt = new Date(primary.age)
-        if (isNaN(dt.getTime())) return t("Enter a valid date for primary member DOB.")
+        if (isNaN(dt.getTime())) return t(txt("Enter a valid date for primary member DOB.","प्राथमिक सदस्य की जन्मतिथि के लिए मान्य तारीख दर्ज करें।"))
         const today = new Date()
         const dtNoTime = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate())
         const todayNoTime = new Date(today.getFullYear(), today.getMonth(), today.getDate())
-        if (dtNoTime > todayNoTime) return t("DOB cannot be in the future.")
+        if (dtNoTime > todayNoTime) return t(txt("DOB cannot be in the future.","जन्मतिथि भविष्य में नहीं हो सकती।"))
         return null
       }
 
@@ -500,35 +508,35 @@ export default function IdCardForm({
   const validateAll = () => {
     const fullErrors: Record<string, string> = {}
 
-    if (!formData.purpose) fullErrors.purpose = txt("Purpose is required.")
-    if (!formData.department) fullErrors.department = txt("Department is required.")
-    if (!formData.unit?.trim()) fullErrors.unit = txt("Unit is required.")
-    if (!formData.employeeNameEn?.trim()) fullErrors.employeeNameEn = txt("Employee name is required.")
-    if (!formData.designationEn?.trim()) fullErrors.designationEn = txt("Designation is required.")
-    if (!formData.dateOfAppointment) fullErrors.dateOfAppointment = txt("Date of appointment is required.")
-    if (!formData.residentialAddress?.trim()) fullErrors.residentialAddress = txt("Residential address is required.")
-    if (!formData.email) fullErrors.email = txt("Email is required.")
-    else if (!/\S+@\S+\.\S+/.test(formData.email)) fullErrors.email = txt("Enter a valid email.")
-    if (!formData.mobileNumber) fullErrors.mobileNumber = txt("Mobile number is required.")
-    else if (!/^\d{10}$/.test(formData.mobileNumber)) fullErrors.mobileNumber = txt("Enter a valid 10-digit mobile number.")
-    if (!formData.pinCode?.trim()) fullErrors.pinCode = txt("Pin code is required.")
-    else if (!/^\d{6}$/.test(formData.pinCode.trim())) fullErrors.pinCode = txt("Enter a valid 6-digit pin code.")
-    if (!forwardingOfficer) fullErrors.forwardingOfficer = txt("Select a forwarding officer.")
-    if (!formData.district?.trim()) fullErrors.district = txt("District is required.")
-    if (!formData.state?.trim()) fullErrors.state = txt("State is required.")
-    if (!familyMembers || familyMembers.length === 0) fullErrors.family = txt("Add at least one family member.")
+    if (!formData.purpose) fullErrors.purpose = txt("Purpose is required.","उद्देश्य आवश्यक है।")
+    if (!formData.department) fullErrors.department = txt("Department is required.","विभाग आवश्यक है।")
+    if (!formData.unit?.trim()) fullErrors.unit = txt("Unit is required.","यूनिट आवश्यक है।")
+    if (!formData.employeeNameEn?.trim()) fullErrors.employeeNameEn = txt("Employee name is required.","कर्मचारी का नाम आवश्यक है।")
+    if (!formData.designationEn?.trim()) fullErrors.designationEn = txt("Designation is required.","पद आवश्यक है।")
+    if (!formData.dateOfAppointment) fullErrors.dateOfAppointment = txt("Date of appointment is required.","नियुक्ति की तारीख आवश्यक है।")
+    if (!formData.residentialAddress?.trim()) fullErrors.residentialAddress = txt("Residential address is required.","निवास पता आवश्यक है।")
+    if (!formData.email) fullErrors.email = txt("Email is required.","ईमेल आवश्यक है।")
+    else if (!/\S+@\S+\.\S+/.test(formData.email)) fullErrors.email = txt("Enter a valid email.","मान्य ईमेल दर्ज करें।")
+    if (!formData.mobileNumber) fullErrors.mobileNumber = txt("Mobile number is required.","मोबाइल नंबर आवश्यक है।")
+    else if (!/^\d{10}$/.test(formData.mobileNumber)) fullErrors.mobileNumber = txt("Enter a valid 10-digit mobile number.","मान्य 10-अंकीय मोबाइल नंबर दर्ज करें।")
+    if (!formData.pinCode?.trim()) fullErrors.pinCode = txt("Pin code is required.","पिन कोड आवश्यक है।")
+    else if (!/^\d{6}$/.test(formData.pinCode.trim())) fullErrors.pinCode = txt("Enter a valid 6-digit pin code.","मान्य 6-अंकीय पिन कोड दर्ज करें।")
+    if (!forwardingOfficer) fullErrors.forwardingOfficer = txt("Select a forwarding officer.","कृपया एक फॉरवर्डिंग अधिकारी चुनें।")
+    if (!formData.district?.trim()) fullErrors.district = txt("District is required.","जिला आवश्यक है।")
+    if (!formData.state?.trim()) fullErrors.state = txt("State is required.","राज्य आवश्यक है।")
+    if (!familyMembers || familyMembers.length === 0) fullErrors.family = txt("Add at least one family member.","कम से कम एक परिवार का सदस्य जोड़ें।")
     else {
       const primary = familyMembers[0]
-      if (!primary.name?.trim()) fullErrors["family.0.name"] = txt("Primary member name is required.")
-      if (!primary.age?.trim()) fullErrors["family.0.age"] = txt("Primary member DOB is required.")
+      if (!primary.name?.trim()) fullErrors["family.0.name"] = txt("Primary member name is required.","प्राथमिक सदस्य का नाम आवश्यक है।")
+      if (!primary.age?.trim()) fullErrors["family.0.age"] = txt("Primary member DOB is required.","प्राथमिक सदस्य की जन्मतिथि आवश्यक है।")
       else {
         const dt = new Date(primary.age)
-        if (isNaN(dt.getTime())) fullErrors["family.0.age"] = txt("Enter a valid date for primary member DOB.")
+        if (isNaN(dt.getTime())) fullErrors["family.0.age"] = txt("Enter a valid date for primary member DOB.","प्राथमिक सदस्य की जन्मतिथि के लिए मान्य तारीख दर्ज करें।")
         else {
           const today = new Date()
           const dtNoTime = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate())
           const todayNoTime = new Date(today.getFullYear(), today.getMonth(), today.getDate())
-          if (dtNoTime > todayNoTime) fullErrors["family.0.age"] = txt("DOB cannot be in the future.")
+          if (dtNoTime > todayNoTime) fullErrors["family.0.age"] = txt("DOB cannot be in the future.","जन्मतिथि भविष्य में नहीं हो सकती।")
         }
       }
     }
@@ -573,7 +581,7 @@ export default function IdCardForm({
       el.style.outline = "3px solid rgba(255,0,0,0.85)"
       el.style.boxShadow = "0 6px 18px rgba(255,0,0,0.15)"
       console.warn("[IdCardForm] Detected possible blocking element:", el, " — flashing red outline for 2s")
-      alert("Detected possible blocking element — it will be flashed in red for 2s. Check console for element details.")
+      alert(txt("Detected possible blocking element — it will be flashed in red for 2s. Check console for element details.","संभावित बाधक तत्व पता चला — यह 2 सेकंड के लिए लाल रंग में हाइलाइट किया जाएगा। कंसोल में विवरण देखें।"))
       setTimeout(() => {
         try {
           el.style.outline = prevOutline
@@ -593,9 +601,11 @@ export default function IdCardForm({
       const el = document.elementFromPoint(x, y) as HTMLElement | null
       console.log("[IdCardForm] inspect at", x, y, el)
       if (el) {
-        alert(`Element at point: ${el.tagName}${el.id ? `#${el.id}` : ""}${el.className ? `.${String(el.className).split(" ").join(".")}` : ""}`)
+        alert(
+          `${txt("Element at point:", "उस बिंदु पर तत्व:")} ${el.tagName}${el.id ? `#${el.id}` : ""}${el.className ? `.${String(el.className).split(" ").join(".")}` : ""}`
+        )
       } else {
-        alert("No element found at that point.")
+        alert(txt("No element found at that point.","उस बिंदु पर कोई तत्व नहीं मिला।"))
       }
     } catch (err) {
       console.warn("handleGlobalInspect failed", err)
@@ -699,27 +709,27 @@ export default function IdCardForm({
         const firstKey = Object.keys(errors)[0] || Object.keys((() => {
           // build a stable snapshot of full errors if errors still empty (race)
           const fullErrs: Record<string, string> = {}
-          if (!formData.purpose) fullErrs.purpose = txt("Purpose is required.")
-          if (!formData.department) fullErrs.department = txt("Department is required.")
-          if (!formData.unit?.trim()) fullErrs.unit = txt("Unit is required.")
-          if (!formData.employeeNameEn?.trim()) fullErrs.employeeNameEn = txt("Employee name is required.")
-          if (!formData.designationEn?.trim()) fullErrs.designationEn = txt("Designation is required.")
-          if (!formData.dateOfAppointment) fullErrs.dateOfAppointment = txt("Date of appointment is required.")
-          if (!formData.residentialAddress?.trim()) fullErrs.residentialAddress = txt("Residential address is required.")
-          if (!formData.email) fullErrs.email = txt("Email is required.")
-          else if (!/\S+@\S+\.\S+/.test(formData.email)) fullErrs.email = txt("Enter a valid email.")
-          if (!formData.mobileNumber) fullErrs.mobileNumber = txt("Mobile number is required.")
-          else if (!/^\d{10}$/.test(formData.mobileNumber)) fullErrs.mobileNumber = txt("Enter a valid 10-digit mobile number.")
-          if (!formData.pinCode?.trim()) fullErrs.pinCode = txt("Pin code is required.")
-          else if (!/^\d{6}$/.test(formData.pinCode.trim())) fullErrs.pinCode = txt("Enter a valid 6-digit pin code.")
-          if (!forwardingOfficer) fullErrs.forwardingOfficer = txt("Select a forwarding officer.")
-          if (!formData.district?.trim()) fullErrs.district = txt("District is required.")
-          if (!formData.state?.trim()) fullErrs.state = txt("State is required.")
-          if (!familyMembers || familyMembers.length === 0) fullErrs.family = txt("Add at least one family member.")
+          if (!formData.purpose) fullErrs.purpose = txt("Purpose is required.","उद्देश्य आवश्यक है।")
+          if (!formData.department) fullErrs.department = txt("Department is required.","विभाग आवश्यक है।")
+          if (!formData.unit?.trim()) fullErrs.unit = txt("Unit is required.","यूनिट आवश्यक है।")
+          if (!formData.employeeNameEn?.trim()) fullErrs.employeeNameEn = txt("Employee name is required.","कर्मचारी का नाम आवश्यक है।")
+          if (!formData.designationEn?.trim()) fullErrs.designationEn = txt("Designation is required.","पद आवश्यक है।")
+          if (!formData.dateOfAppointment) fullErrs.dateOfAppointment = txt("Date of appointment is required.","नियुक्ति की तारीख आवश्यक है।")
+          if (!formData.residentialAddress?.trim()) fullErrs.residentialAddress = txt("Residential address is required.","निवास पता आवश्यक है।")
+          if (!formData.email) fullErrs.email = txt("Email is required.","ईमेल आवश्यक है।")
+          else if (!/\S+@\S+\.\S+/.test(formData.email)) fullErrs.email = txt("Enter a valid email.","मान्य ईमेल दर्ज करें।")
+          if (!formData.mobileNumber) fullErrs.mobileNumber = txt("Mobile number is required.","मोबाइल नंबर आवश्यक है।")
+          else if (!/^\d{10}$/.test(formData.mobileNumber)) fullErrs.mobileNumber = txt("Enter a valid 10-digit mobile number.","मान्य 10-अंकीय मोबाइल नंबर दर्ज करें।")
+          if (!formData.pinCode?.trim()) fullErrs.pinCode = txt("Pin code is required.","पिन कोड आवश्यक है।")
+          else if (!/^\d{6}$/.test(formData.pinCode.trim())) fullErrs.pinCode = txt("Enter a valid 6-digit pin code","मान्य 6-अंकीय पिन कोड दर्ज करें।")
+          if (!forwardingOfficer) fullErrs.forwardingOfficer = txt("Select a forwarding officer.","कृपया एक फॉरवर्डिंग अधिकारी चुनें।")
+          if (!formData.district?.trim()) fullErrs.district = txt("District is required.","जिला आवश्यक है।")
+          if (!formData.state?.trim()) fullErrs.state = txt("State is required.","राज्य आवश्यक है।")
+          if (!familyMembers || familyMembers.length === 0) fullErrs.family = txt("Add at least one family member.","कम से कम एक परिवार का सदस्य जोड़ें।")
           else {
             const primary = familyMembers[0]
-            if (!primary.name?.trim()) fullErrs["family.0.name"] = txt("Primary member name is required.")
-            if (!primary.age?.trim()) fullErrs["family.0.age"] = txt("Primary member DOB is required.")
+            if (!primary.name?.trim()) fullErrs["family.0.name"] = txt("Primary member name is required.","प्राथमिक सदस्य का नाम आवश्यक है।")
+            if (!primary.age?.trim()) fullErrs["family.0.age"] = txt("Primary member DOB is required.","प्राथमिक सदस्य की जन्मतिथि आवश्यक है।")
           }
           return fullErrs
         })())[0]
@@ -793,15 +803,128 @@ export default function IdCardForm({
         updatedAt: new Date().toISOString(),
       }
       localStorage.setItem("idcardDraft", JSON.stringify(draft))
-      alert(txt("Draft saved"))
+      alert(txt("Draft saved","ड्राफ्ट सहेजा गया"))
       return id
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error("Failed saving draft", err)
-      alert(txt("Failed to save draft"))
+      alert(txt("Failed to save draft","ड्राफ्ट सहेजने में विफल"))
       return null
     }
   }
+
+  // -------------------- TRANSLATION HELPERS (ADDED) --------------------
+  // This client-side helper attempts to translate text to Hindi and write into the corresponding Hi fields.
+  // Strategy:
+  // 1) Debounce input -> avoid excessive calls while typing.
+  // 2) Try POST /api/translate (recommended: implement server route to call Google Translate / Azure / GCP
+  //    so API keys are not exposed to client). If that fails, fallback to LibreTranslate public endpoint.
+  //
+  // Example server route (Next.js) for /api/translate:
+  // (This is only an example — implement on server and secure your API key)
+  //
+  // // pages/api/translate.ts
+  // export default async function handler(req, res) {
+  //   const { q, target } = req.body
+  //   // use your server-side credential to call Google Translate, e.g. fetch to:
+  //   // https://translation.googleapis.com/language/translate/v2?key=YOUR_KEY
+  //   // or use official Google Cloud SDK on server
+  //   // For now simply proxy to LibreTranslate or implement production translator here.
+  // }
+  //
+  // Client-side implementation (below) will attempt to fetch '/api/translate' then fall back.
+  const translateTimeoutRef = useRef<number | null>(null)
+  const [translating, setTranslating] = useState({ employee: false, designation: false })
+
+  const translateText = async (text: string, target = "hi") => {
+    if (!text || !text.trim()) return ""
+    // prefer your server-side endpoint (safer for keys)
+    try {
+      const res = await fetch("/api/translate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ q: text, target }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        // expect data.translatedText (adjust according to your server)
+        if (typeof data.translatedText === "string") return data.translatedText
+        // if server returns Google API response style:
+        if (data && data.data && data.data.translations && data.data.translations[0]) {
+          return data.data.translations[0].translatedText
+        }
+      } else {
+        console.warn("Server /api/translate responded not OK:", res.status)
+      }
+    } catch (err) {
+      console.warn("Call to /api/translate failed:", err)
+    }
+
+    // Fallback: LibreTranslate public endpoint (may be rate-limited)
+    try {
+      const res2 = await fetch("https://libretranslate.de/translate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          q: text,
+          source: "en",
+          target: target,
+          format: "text",
+        }),
+      })
+      if (res2.ok) {
+        const out = await res2.json()
+        if (out && out.translatedText) return out.translatedText
+      } else {
+        console.warn("LibreTranslate responded not OK:", res2.status)
+      }
+    } catch (err) {
+      console.warn("LibreTranslate fallback failed:", err)
+    }
+
+    // Final fallback: just return original text (or you could attempt naive transliteration)
+    return text
+  }
+
+  // Debounced call orchestrators
+  const scheduleEmployeeTranslate = (text: string) => {
+    // cancel previous
+    if (translateTimeoutRef.current) window.clearTimeout(translateTimeoutRef.current)
+    // schedule
+    translateTimeoutRef.current = window.setTimeout(async () => {
+      try {
+        setTranslating((s) => ({ ...s, employee: true }))
+        const hi = await translateText(text, "hi")
+        setFormData((s) => ({ ...s, employeeNameHi: hi }))
+      } catch (err) {
+        console.warn("Employee name translation failed:", err)
+      } finally {
+        setTranslating((s) => ({ ...s, employee: false }))
+      }
+    }, 700)
+  }
+
+  const scheduleDesignationTranslate = (text: string) => {
+    // Use a different timer so both can run independently
+    // We'll store them in separate refs (re-using translateTimeoutRef would overwrite)
+    // Create separate ref objects for designation
+    if ((scheduleDesignationTranslate as any).timeout) {
+      window.clearTimeout((scheduleDesignationTranslate as any).timeout)
+    }
+    (scheduleDesignationTranslate as any).timeout = window.setTimeout(async () => {
+      try {
+        setTranslating((s) => ({ ...s, designation: true }))
+        const hi = await translateText(text, "hi")
+        setFormData((s) => ({ ...s, designationHi: hi }))
+      } catch (err) {
+        console.warn("Designation translation failed:", err)
+      } finally {
+        setTranslating((s) => ({ ...s, designation: false }))
+      }
+    }, 700)
+  }
+
+  // --------------------------------------------------------------------
 
   // inline styles (kept same as original)
   const styles = {
@@ -871,12 +994,12 @@ export default function IdCardForm({
           className="text-green-700 font-semibold inline-flex items-center mb-6"
           style={{ background: "transparent", border: "none", padding: 0, cursor: "pointer" }}
         >
-          ← {txt("Back")}
+          ← {txt("Back","वापस")}
         </button>
 
         <div className="card-elevated rounded-2xl p-8" style={{ background: "white" }}>
           <h1 className="heading-lg mb-6" style={{ fontSize: 28, fontWeight: 700, color: "#0b3355" }}>
-            {txt("Apply for Identity Card")}
+            {txt("Apply for Identity Card","पहचान पत्र के लिए आवेदन करें")}
           </h1>
 
           {/* SUCCESS MESSAGE (fixed, high z-index so always visible) */}
@@ -893,12 +1016,12 @@ export default function IdCardForm({
                 boxShadow: "0 6px 18px rgba(0,0,0,0.12)",
               }}
             >
-              {language === "en" ? "Application submitted successfully!" : "आवेदन सफलतापूर्वक जमा किया गया!"}
+              {txt("Application submitted successfully!","आवेदन सफलतापूर्वक जमा किया गया!")}
             </div>
           )}
 
           {/* SECTION A */}
-          <h3 style={{ ...styles.sectionHeading, marginTop: 6 }}>SECTION A – DOCUMENT REQUIREMENTS</h3>
+          <h3 style={{ ...styles.sectionHeading, marginTop: 6 }}>{txt("SECTION A – DOCUMENT REQUIREMENTS","अनुभाग A – दस्तावेज़ आवश्यकताएँ")}</h3>
 
           <div className="mt-4 space-y-4">
             {documentCategories.map((cat) => (
@@ -938,9 +1061,9 @@ export default function IdCardForm({
             <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
               <AlertCircle style={{ color: "#d32f2f" }} />
               <div>
-                <div style={{ fontWeight: 700, color: "#d32f2f" }}>{txt("Important Note")}</div>
+                <div style={{ fontWeight: 700, color: "#d32f2f" }}>{txt("Important Note","महत्वपूर्ण सूचना")}</div>
                 <div style={{ color: "#333" }}>
-                  {txt("In Case of Lost / Damage of Identity Card, Original Money Receipt be submitted to this Office.")}
+                  {txt("In Case of Lost / Damage of Identity Card, Original Money Receipt be submitted to this Office.","पहचान पत्र खो जाने/क्षतिग्रस्त होने की स्थिति में, मूल रसीद इस कार्यालय में जमा करें।")}
                 </div>
               </div>
             </div>
@@ -948,14 +1071,14 @@ export default function IdCardForm({
 
           {/* SECTION B */}
           <hr className="my-6" style={{ borderColor: "#eee" }} />
-          <h3 style={{ ...styles.sectionHeading }}>{txt("SECTION B – EMPLOYEE DETAILS")}</h3>
+          <h3 style={{ ...styles.sectionHeading }}>{txt("SECTION B – EMPLOYEE DETAILS","अनुभाग B – कर्मचारी विवरण")}</h3>
 
           {/* IMPORTANT: wire form submit to handleSubmit for reliable click/focus handling */}
           <form onSubmit={handleSubmit} className="mt-6 space-y-6" style={{ position: "relative" }}>
             {/* form fields unchanged */}
             <div className="grid md:grid-cols-2 gap-6">
               <div>
-                <RenderLabel text={txt("Purpose of Making ID Card")} required />
+                <RenderLabel text={txt("Purpose of Making ID Card","पहचान पत्र बनाने का उद्देश्य")} required />
                 <select
                   className="rounded-xl px-4 py-3 w-full"
                   style={{ border: "1px solid #e6e6e6", background: "white", appearance: "none" }}
@@ -967,16 +1090,16 @@ export default function IdCardForm({
                   onBlur={() => touch("purpose")}
                   required
                 >
-                  <option value="">{txt("Select Purpose")}</option>
-                  <option value="new">New Card</option>
-                  <option value="promotion">Promotion</option>
-                  <option value="lost">Replacement - Lost</option>
+                  <option value="">{txt("Select Purpose","उद्देश्य चुनें")}</option>
+                  <option value="new">{txt("New Card","नया कार्ड")}</option>
+                  <option value="promotion">{txt("Promotion","पदोन्नति")}</option>
+                  <option value="lost">{txt("Replacement - Lost","प्रतिस्थापन - खोया हुआ")}</option>
                 </select>
                 {errors.purpose && <div style={styles.errorText}>{errors.purpose}</div>}
               </div>
 
               <div>
-                <RenderLabel text={txt("Department")} required />
+                <RenderLabel text={txt("Department","विभाग")} required />
                 <select
                   className="rounded-xl px-4 py-3 w-full"
                   style={{ border: "1px solid #e6e6e6", background: "white", appearance: "none" }}
@@ -988,61 +1111,115 @@ export default function IdCardForm({
                   onBlur={() => touch("department")}
                   required
                 >
-                  <option value="">{txt("Select")}</option>
-                  <option value="engineering">Engineering</option>
-                  <option value="operations">Operations</option>
+                  <option value="">{txt("Select","चुनें")}</option>
+                  <option value="engineering">{txt("Engineering","इंजीनियरिंग")}</option>
+                  <option value="operations">{txt("Operations","ऑपरेशंस")}</option>
                 </select>
                 {errors.department && <div style={styles.errorText}>{errors.department}</div>}
               </div>
 
               <div>
-                <RenderLabel text={txt("Unit")} required />
+                <RenderLabel text={txt("Unit","यूनिट")} required />
                 <Input className="rounded-xl" value={formData.unit} onChange={(e: any) => { setFormData((s) => ({ ...s, unit: e.target.value })); touch("unit") }} onBlur={() => touch("unit")} required />
                 {errors.unit && <div style={styles.errorText}>{errors.unit}</div>}
               </div>
 
               <div>
-                <RenderLabel text={txt("Employee Name (English)")} required />
-                <Input className="rounded-xl" value={formData.employeeNameEn} onChange={(e: any) => { setFormData((s) => ({ ...s, employeeNameEn: e.target.value })); touch("employeeNameEn") }} onBlur={() => touch("employeeNameEn")} required />
+                <RenderLabel text={txt("Employee Name (English)","कर्मचारी का नाम (अंग्रेज़ी)")} required />
+                <Input
+                  className="rounded-xl"
+                  value={formData.employeeNameEn}
+                  onChange={(e: any) => {
+                    const v = e.target.value
+                    setFormData((s) => ({ ...s, employeeNameEn: v }))
+                    touch("employeeNameEn")
+                    // schedule auto-translate
+                    scheduleEmployeeTranslate(v)
+                  }}
+                  onBlur={() => touch("employeeNameEn")}
+                  required
+                />
                 {errors.employeeNameEn && <div style={styles.errorText}>{errors.employeeNameEn}</div>}
-              </div>
-
-              {language === "hi" && (
-                <div>
-                  <RenderLabel text={txt("Employee Name (Hindi)")} />
-                  <Input className="rounded-xl" value={formData.employeeNameHi} onChange={(e: any) => setFormData((s) => ({ ...s, employeeNameHi: e.target.value }))} />
+                {/* small hint showing translation status */}
+                <div style={{ marginTop: 6, fontSize: 12, color: "#6b7280" }}>
+                  {translating.employee ? txt("Translating...","अनुवाद हो रहा है...") : txt("Auto-translates to Hindi below","नीचे हिंदी में स्वतः अनुवादित")}
                 </div>
-              )}
+              </div>
 
+              {/* NEW: Employee Name Hindi (always present so user can edit or override auto-translation) */}
               <div>
-                <RenderLabel text={txt("Designation (English)")} required />
-                <Input className="rounded-xl" value={formData.designationEn} onChange={(e: any) => { setFormData((s) => ({ ...s, designationEn: e.target.value })); touch("designationEn") }} onBlur={() => touch("designationEn")} required />
-                {errors.designationEn && <div style={styles.errorText}>{errors.designationEn}</div>}
+                <RenderLabel text={txt("Employee Name (Hindi)","कर्मचारी का नाम (हिंदी)")} />
+                <Input
+                  className="rounded-xl"
+                  value={formData.employeeNameHi}
+                  onChange={(e: any) => {
+                    setFormData((s) => ({ ...s, employeeNameHi: e.target.value }))
+                    // if user edits Hindi manually, mark touched if desired
+                    touch("employeeNameHi")
+                  }}
+                  onBlur={() => touch("employeeNameHi")}
+                />
+                <div style={{ marginTop: 6, fontSize: 12, color: "#6b7280" }}>{txt("Automatically filled from English — editable","अंग्रेज़ी से स्वतः भरा गया — संपादन योग्य")}</div>
               </div>
 
               <div>
-                <RenderLabel text={txt("Date of Appointment")} required />
+                <RenderLabel text={txt("Designation (English)","पदोन्नति (अंग्रेज़ी)")} required />
+                <Input
+                  className="rounded-xl"
+                  value={formData.designationEn}
+                  onChange={(e: any) => {
+                    const v = e.target.value
+                    setFormData((s) => ({ ...s, designationEn: v }))
+                    touch("designationEn")
+                    scheduleDesignationTranslate(v)
+                  }}
+                  onBlur={() => touch("designationEn")}
+                  required
+                />
+                {errors.designationEn && <div style={styles.errorText}>{errors.designationEn}</div>}
+                <div style={{ marginTop: 6, fontSize: 12, color: "#6b7280" }}>
+                  {translating.designation ? txt("Translating...","अनुवाद हो रहा है...") : txt("Auto-translates to Hindi below","नीचे हिंदी में स्वतः अनुवादित")}
+                </div>
+              </div>
+
+              {/* NEW: Designation Hindi */}
+              <div>
+                <RenderLabel text={txt("Designation (Hindi)","पद (हिंदी)")} />
+                <Input
+                  className="rounded-xl"
+                  value={formData.designationHi}
+                  onChange={(e: any) => {
+                    setFormData((s) => ({ ...s, designationHi: e.target.value }))
+                    touch("designationHi")
+                  }}
+                  onBlur={() => touch("designationHi")}
+                />
+                <div style={{ marginTop: 6, fontSize: 12, color: "#6b7280" }}>{txt("Automatically filled from English — editable","अंग्रेज़ी से स्वतः भरा गया — संपादन योग्य")}</div>
+              </div>
+
+              <div>
+                <RenderLabel text={txt("Date of Appointment","नियुक्ति की तारीख")} required />
                 <Input type="date" className="rounded-xl" value={formData.dateOfAppointment} onChange={(e: any) => { setFormData((s) => ({ ...s, dateOfAppointment: e.target.value })); touch("dateOfAppointment") }} onBlur={() => touch("dateOfAppointment")} required />
                 {errors.dateOfAppointment && <div style={styles.errorText}>{errors.dateOfAppointment}</div>}
               </div>
 
               <div>
-                <RenderLabel text={txt("Nearest RH/HU")} required />
+                <RenderLabel text={txt("Nearest RH/HU","नज़दीकी RH/HU")} required />
                 <Input className="rounded-xl" value={formData.nearestRH} onChange={(e: any) => setFormData((s) => ({ ...s, nearestRH: e.target.value }))} required />
               </div>
 
               <div>
-                <RenderLabel text={txt("Place of Work")} required />
+                <RenderLabel text={txt("Place of Work","कार्यस्थल")} required />
                 <Input className="rounded-xl" value={formData.placeOfWork} onChange={(e: any) => setFormData((s) => ({ ...s, placeOfWork: e.target.value }))} required />
               </div>
 
               <div>
-                <RenderLabel text={txt("Pay Level")} required />
+                <RenderLabel text={txt("Pay Level","पे स्तर")} required />
                 <Input className="rounded-xl" value={formData.payLevel} onChange={(e: any) => setFormData((s) => ({ ...s, payLevel: e.target.value }))} required />
               </div>
 
               <div>
-                <RenderLabel text={txt("Email")} required />
+                <RenderLabel text={txt("Email","ईमेल")} required />
                 <Input
                   id="email"
                   name="email"
@@ -1061,7 +1238,7 @@ export default function IdCardForm({
               </div>
 
               <div>
-                <RenderLabel text={txt("Mobile Number")} required />
+                <RenderLabel text={txt("Mobile Number","मोबाइल नंबर")} required />
                 <Input
                   id="mobileNumber"
                   name="mobileNumber"
@@ -1079,7 +1256,7 @@ export default function IdCardForm({
                     }
                   }
                   onBlur={() => touch("mobileNumber")}
-                  placeholder="Enter 10-digit mobile"
+                  placeholder={txt("Enter 10-digit mobile","10-अंकीय मोबाइल दर्ज करें")}
                   maxLength={10}
                   required
                 />
@@ -1088,7 +1265,7 @@ export default function IdCardForm({
               </div>
 
               <div>
-                <RenderLabel text={txt("Pin Code")} required />
+                <RenderLabel text={txt("Pin Code","पिन कोड")} required />
                 <Input
                   id="pinCode"
                   name="pinCode"
@@ -1096,7 +1273,7 @@ export default function IdCardForm({
                   value={formData.pinCode}
                   onChange={(e: any) => { const cleaned = String(e.target.value).replace(/\D/g, "").slice(0, 6); setFormData((s) => ({ ...s, pinCode: cleaned })); touch("pinCode") }}
                   onBlur={() => touch("pinCode")}
-                  placeholder="6-digit pin code"
+                  placeholder={txt("6-digit pin code","6-अंकीय पिन कोड")}
                   maxLength={6}
                   required
                 />
@@ -1105,41 +1282,41 @@ export default function IdCardForm({
               </div>
 
               <div>
-                <RenderLabel text={txt("District")} required />
+                <RenderLabel text={txt("District","जिला")} required />
                 <Input className="rounded-xl" value={formData.district} onChange={(e: any) => { setFormData((s) => ({ ...s, district: e.target.value })); touch("district") }} onBlur={() => touch("district")} required />
               </div>
 
               <div>
-                <RenderLabel text={txt("State")} required />
+                <RenderLabel text={txt("State","राज्य")} required />
                 <Input className="rounded-xl" value={formData.state} onChange={(e: any) => { setFormData((s) => ({ ...s, state: e.target.value })); touch("state") }} onBlur={() => touch("state")} required />
               </div>
 
               <div>
-                <RenderLabel text={txt("ID Card No (if applicable)")} />
+                <RenderLabel text={txt("ID Card No (if applicable)","आईडी कार्ड नंबर (यदि लागू हो)")} />
                 <Input className="rounded-xl" value={formData.idCardNo} onChange={(e: any) => setFormData((s) => ({ ...s, idCardNo: e.target.value }))} />
               </div>
             </div>
 
             <div>
-              <RenderLabel text={txt("Residential Address")} required />
+              <RenderLabel text={txt("Residential Address","निवास पता")} required />
               <textarea value={formData.residentialAddress} onChange={(e) => { setFormData((s) => ({ ...s, residentialAddress: e.target.value })); touch("residentialAddress") }} onBlur={() => touch("residentialAddress")} className="w-full rounded-xl p-4" style={{ minHeight: 120, border: "1px solid #e6e6e6" }} required />
               {errors.residentialAddress && <div style={styles.errorText}>{errors.residentialAddress}</div>}
             </div>
 
             <div>
-              <RenderLabel text={txt("Unique Identification Mark")} />
-              <Input className="rounded-xl" value={formData.uniqueIdentificationMark} onChange={(e: any) => setFormData((s) => ({ ...s, uniqueIdentificationMark: e.target.value }))} placeholder={txt("Optional")} />
+              <RenderLabel text={txt("Unique Identification Mark","विशिष्ट पहचान चिह्न")} />
+              <Input className="rounded-xl" value={formData.uniqueIdentificationMark} onChange={(e: any) => setFormData((s) => ({ ...s, uniqueIdentificationMark: e.target.value }))} placeholder={txt("Optional","वैकल्पिक")} />
             </div>
 
             <div>
-              <RenderLabel text={txt("Upload Documents")} />
+              <RenderLabel text={txt("Upload Documents","दस्तावेज़ अपलोड करें")} />
               <div style={styles.dashedBox}>
                 <Upload className="mx-auto" style={{ width: 36, height: 36, color: "#2e7d32" }} />
-                <div style={{ fontWeight: 700, marginTop: 8 }}>{txt("Upload Documents")}</div>
-                <div style={{ color: "#6b7280", marginTop: 2 }}>PDF, JPG, PNG (Max 5 MB each)</div>
+                <div style={{ fontWeight: 700, marginTop: 8 }}>{txt("Upload Documents","दस्तावेज़ अपलोड करें")}</div>
+                <div style={{ color: "#6b7280", marginTop: 2 }}>{txt("PDF, JPG, PNG (Max 5 MB each)","PDF, JPG, PNG (प्रति फ़ाइल अधिकतम 5MB)")}</div>
                 <input id="uploadFiles" type="file" multiple accept=".pdf,.jpg,.jpeg,.png" onChange={handleFileUpload} style={{ display: "none" }} />
                 <label htmlFor="uploadFiles" style={{ display: "block", marginTop: 8, cursor: "pointer", color: "#2e7d32" }}>
-                  {txt("Click to upload or drag files here")}
+                  {txt("Click to upload or drag files here","अपलोड करने के लिए क्लिक करें या फाइलें यहाँ ड्रैग करें")}
                 </label>
               </div>
 
@@ -1159,14 +1336,14 @@ export default function IdCardForm({
 
             {/* SECTION C */}
             <hr className="my-6" style={{ borderColor: "#eee" }} />
-            <h3 style={{ ...styles.sectionHeading }}>SECTION C – FAMILY DETAILS</h3>
+            <h3 style={{ ...styles.sectionHeading }}>{txt("SECTION C – FAMILY DETAILS","अनुभाग C – पारिवारिक विवरण")}</h3>
 
             <div className="mt-4 space-y-4">
               {familyMembers.map((m, idx) => (
                 <div key={m.id} className="rounded-lg p-4" style={{ background: "#f6f6f6", border: "1px solid #ececec" }}>
                   <div className="grid md:grid-cols-2 gap-6">
                     <div>
-                      <RenderLabel text={txt("Full Name")} required={idx === 0} />
+                      <RenderLabel text={txt("Full Name","पूरा नाम")} required={idx === 0} />
                       <Input
                         id="family.0.name"
                         name="family.0.name"
@@ -1180,25 +1357,25 @@ export default function IdCardForm({
                     </div>
 
                     <div>
-                      <RenderLabel text={txt("Relation")} />
+                      <RenderLabel text={txt("Relation","रिश्ता")} />
                       <select value={m.relation} onChange={(e) => updateFamilyMember(m.id, "relation", e.target.value)} className="w-full rounded-xl px-4 py-3" style={{ border: "1px solid #e6e6e6" }}>
-                        <option>Spouse</option>
-                        <option>Son</option>
-                        <option>Daughter</option>
-                        <option>Father</option>
-                        <option>Mother</option>
-                        <option>Dependent</option>
+                        <option>{txt("Spouse","जीवनसाथी")}</option>
+                        <option>{txt("Son","पुत्र")}</option>
+                        <option>{txt("Daughter","पुत्री")}</option>
+                        <option>{txt("Father","पिता")}</option>
+                        <option>{txt("Mother","माता")}</option>
+                        <option>{txt("Dependent","आश्रित")}</option>
                       </select>
                     </div>
 
                     <div>
-                      <RenderLabel text={txt("Age / Date of Birth")} required={idx === 0} />
+                      <RenderLabel text={txt("Age / Date of Birth","आयु / जन्मतिथि")} required={idx === 0} />
                       {/* replaced text input with date picker */}
                       <Input
                         id="family.0.age"
                         name="family.0.age"
                         type="date"
-                        placeholder="DD/MM/YYYY"
+                        placeholder={txt("DD/MM/YYYY","DD/MM/YYYY")}
                         value={m.age}
                         onChange={(e: any) => { updateFamilyMember(m.id, "age", e.target.value); touch("family.0.age") }}
                         onBlur={() => touch("family.0.age")}
@@ -1208,33 +1385,33 @@ export default function IdCardForm({
                     </div>
 
                     <div>
-                      <RenderLabel text={txt("Gender")} />
+                      <RenderLabel text={txt("Gender","लैंगिक")} />
                       <select value={m.gender} onChange={(e) => updateFamilyMember(m.id, "gender", e.target.value)} className="w-full rounded-xl px-4 py-3" style={{ border: "1px solid #e6e6e6" }}>
-                        <option>Male</option>
-                        <option>Female</option>
-                        <option>Other</option>
+                        <option>{txt("Male","पुरुष")}</option>
+                        <option>{txt("Female","महिला")}</option>
+                        <option>{txt("Other","अन्य")}</option>
                       </select>
                     </div>
 
                     <div className="md:col-span-2">
-                      <RenderLabel text={txt("Aadhaar Number (Optional)")} />
-                      <Input value={m.aadhaar} onChange={(e: any) => updateFamilyMember(m.id, "aadhaar", String(e.target.value).replace(/\D/g, "").slice(0, 12))} placeholder={txt("Optional")} />
+                      <RenderLabel text={txt("Aadhaar Number (Optional)","आधार नंबर (वैकल्पिक)")} />
+                      <Input value={m.aadhaar} onChange={(e: any) => updateFamilyMember(m.id, "aadhaar", String(e.target.value).replace(/\D/g, "").slice(0, 12))} placeholder={txt("Optional","वैकल्पिक")} />
                     </div>
 
                     <div className="md:col-span-2">
-                      <RenderLabel text={txt("Unique Identification Mark (Optional)")} />
-                      <Input value={m.uniqueIdentificationMark} onChange={(e: any) => updateFamilyMember(m.id, "uniqueIdentificationMark", e.target.value)} placeholder={txt("Optional")} />
+                      <RenderLabel text={txt("Unique Identification Mark (Optional)","विशिष्ट पहचान चिह्न (वैकल्पिक)")} />
+                      <Input value={m.uniqueIdentificationMark} onChange={(e: any) => updateFamilyMember(m.id, "uniqueIdentificationMark", e.target.value)} placeholder={txt("Optional","वैकल्पिक")} />
                     </div>
 
                     <div className="md:col-span-2">
-                      <RenderLabel text={txt("Supporting Document (Optional)")} />
+                      <RenderLabel text={txt("Supporting Document (Optional)","समर्थन दस्तावेज़ (वैकल्पिक)")} />
 
                       <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 6 }}>
                         <label htmlFor={`member-doc-${m.id}`} className="rounded-xl px-4 py-2" style={{ border: "1px solid #e6e6e6", background: "white", cursor: "pointer", fontWeight: 600 }}>
-                          {txt("Choose file")}
+                          {txt("Choose file","फ़ाइल चुनें")}
                         </label>
 
-                        <span style={{ color: "#6b7280", fontSize: 14 }}>{m.doc ? (m.doc instanceof File ? m.doc.name : (m.doc as any).name ?? txt("No file chosen")) : txt("No file chosen")}</span>
+                        <span style={{ color: "#6b7280", fontSize: 14 }}>{m.doc ? (m.doc instanceof File ? m.doc.name : (m.doc as any).name ?? txt("No file chosen","कोई फाइल नहीं")) : txt("No file chosen","कोई फाइल नहीं")}</span>
                       </div>
 
                       <input id={`member-doc-${m.id}`} type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={(e) => updateFamilyMember(m.id, "doc", e.currentTarget.files?.[0] || null)} style={{ display: "none" }} />
@@ -1244,7 +1421,7 @@ export default function IdCardForm({
                   <div className="mt-3">
                     {idx !== 0 ? (
                       <button type="button" onClick={() => removeFamilyMember(m.id)} style={{ color: "#d32f2f", fontWeight: 600 }}>
-                        {txt("Remove")} ×
+                        {txt("Remove","हटाएँ")} ×
                       </button>
                     ) : (
                       <div style={{ height: 1 }} />
@@ -1255,19 +1432,19 @@ export default function IdCardForm({
 
               <div>
                 <button type="button" onClick={addFamilyMember} className="rounded-xl px-4 py-3" style={{ background: "#f6f6f6", color: "#2e7d32", fontWeight: 700 }}>
-                  <Plus style={{ marginRight: 8 }} /> {txt("Add member")}
+                  <Plus style={{ marginRight: 8 }} /> {txt("Add member","सदस्य जोड़ें")}
                 </button>
               </div>
             </div>
 
             {/* Forwarding officer & actions (moved AFTER family details) */}
             <div>
-              <RenderLabel text={txt("Select Forwarding Officer")} required />
+              <RenderLabel text={txt("Select Forwarding Officer","फॉरवर्डिंग अधिकारी चुनें")} required />
               <select className="rounded-xl px-4 py-3 w-full" style={{ border: "1px solid #e6e6e6", background: "white", appearance: "none" }} value={forwardingOfficer} onChange={(e) => { setForwardingOfficer(e.target.value); touch("forwardingOfficer") }} onBlur={() => touch("forwardingOfficer")} required>
-                <option value="">{txt("Select Forwarding Officer")}</option>
-                <option value="CO-001">Raj Kumar - Chief Officer</option>
-                <option value="AO-002">Priya Singh - Area Officer</option>
-                <option value="DO-003">Amit Patel - District Officer</option>
+                <option value="">{txt("Select Forwarding Officer","फॉरवर्डिंग अधिकारी चुनें")}</option>
+                <option value="CO-001">{txt("Raj Kumar - Chief Officer","राज कुमार - मुख्य अधिकारी")}</option>
+                <option value="AO-002">{txt("Priya Singh - Area Officer","प्रिया सिंह - क्षेत्र अधिकारी")}</option>
+                <option value="DO-003">{txt("Amit Patel - District Officer","अमित पटेल - जिला अधिकारी")}</option>
               </select>
               {errors.forwardingOfficer && <div style={styles.errorText}>{errors.forwardingOfficer}</div>}
             </div>
@@ -1279,7 +1456,7 @@ export default function IdCardForm({
                 className="flex-1 border-2 rounded-xl"
                 style={{ padding: "18px 28px", borderColor: "#0b3355", color: "#0b3355", fontWeight: 600 }}
               >
-                {txt("Save Draft")}
+                {txt("Save Draft","ड्राफ्ट सहेजें")}
               </button>
 
               {/* Defensive: keep type=submit, but ALSO attach an onClick handler that stops propagation and calls handleSubmit.
@@ -1325,7 +1502,7 @@ export default function IdCardForm({
                 }}
                 aria-disabled={false}
               >
-                {txt("Submit Application")}
+                {txt("Submit Application","आवेदन जमा करें")}
               </button>
             </div>
           </form>
@@ -1335,8 +1512,8 @@ export default function IdCardForm({
       {/* Debug UI */}
       {debugAttempts.length > 0 && (
         <div style={styles.debugBox}>
-          <div style={{ fontWeight: 700, marginBottom: 8 }}>Back navigation debug</div>
-          <div style={{ opacity: 0.85, fontSize: 11, marginBottom: 8 }}>Check console for the same messages.</div>
+          <div style={{ fontWeight: 700, marginBottom: 8 }}>{txt("Back navigation debug","बैक नेविगेशन डिबग")}</div>
+          <div style={{ opacity: 0.85, fontSize: 11, marginBottom: 8 }}>{txt("Check console for the same messages.","कंसोल में समान संदेश देखें।")}</div>
           <ul style={{ paddingLeft: 14, margin: 0 }}>
             {debugAttempts.map((d, i) => (
               <li key={i} style={{ marginBottom: 6 }}>
@@ -1344,7 +1521,7 @@ export default function IdCardForm({
               </li>
             ))}
           </ul>
-          <div style={{ marginTop: 8, fontSize: 11, opacity: 0.8 }}>If still 404, paste your dashboard file path (e.g. /app/dashboard/page.tsx)</div>
+          <div style={{ marginTop: 8, fontSize: 11, opacity: 0.8 }}>{txt("If still 404, paste your dashboard file path (e.g. /app/dashboard/page.tsx)","यदि फिर भी 404 आता है, तो अपने डैशबोर्ड फ़ाइल पथ (उदा. /app/dashboard/page.tsx) पेस्ट करें")}</div>
         </div>
       )}
     </main>

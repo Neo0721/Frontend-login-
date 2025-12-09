@@ -14,6 +14,9 @@ export default function ChangePassword({
   onNavigate,
   language = "en",
 }: ChangePasswordProps) {
+  // helper to choose text based on language
+  const txt = (en: string, hi?: string) => (language === "en" ? en : hi ?? en);
+
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -25,48 +28,80 @@ export default function ChangePassword({
   function validate() {
     setError(null);
     if (!currentPassword || !newPassword || !confirmPassword) {
-      setError("Please fill all fields.");
+      setError(txt("Please fill all fields.", "कृपया सभी फ़ील्ड भरें।"));
       return false;
     }
     if (newPassword.length < 8) {
-      setError("Password must be at least 8 characters.");
+      setError(txt("Password must be at least 8 characters.", "पासवर्ड कम से कम 8 अंकों का होना चाहिए।"));
       return false;
     }
     if (newPassword !== confirmPassword) {
-      setError("New passwords do not match.");
+      setError(txt("New passwords do not match.", "नए पासवर्ड मेल नहीं खाते।"));
       return false;
     }
     return true;
   }
 
   async function handleSubmit(e: any) {
-    e.preventDefault();
-    if (!validate()) return;
+  e.preventDefault();
+  if (!validate()) return;
 
-    setLoading(true);
-    setError(null);
-    setSuccess(null);
+  setLoading(true);
+  setError(null);
+  setSuccess(null);
 
+  try {
+    const res = await fetch("/api/change-password", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ currentPassword, newPassword }),
+    });
+
+    // try to parse JSON body (if any)
+    let body: any = null;
     try {
-      const res = await fetch("/api/change-password", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ currentPassword, newPassword }),
-      });
-
-      if (!res.ok) throw new Error("Failed to update password");
-
-      setSuccess("Password updated successfully!");
-      setCurrentPassword("");
-      setNewPassword("");
-      setConfirmPassword("");
-
-    } catch (err: any) {
-      setError(err.message || "Something went wrong.");
-    } finally {
-      setLoading(false);
+      body = await res.json();
+    } catch (parseErr) {
+      // not JSON or empty body — that's OK
+      console.info("change-password: response had no JSON body");
     }
+
+    console.log("change-password response:", res.status, body);
+
+    if (!res.ok) {
+      // Prefer server message if available (body.message or body.error), else use status text
+      const serverMsg = (body && (body.message || body.error)) ?? res.statusText ?? txt("Failed to update password", "पासवर्ड अपडेट करने में विफल");
+      setError(typeof serverMsg === "string" ? serverMsg : String(serverMsg));
+      return;
+    }
+
+    // Success
+    setSuccess(txt("Password updated successfully!", "पासवर्ड सफलतापूर्वक अपडेट हो गया!"));
+    setCurrentPassword("");
+    setNewPassword("");
+    setConfirmPassword("");
+
+    // navigate back after short delay so user sees success message
+    setTimeout(() => {
+      try {
+        if (typeof onNavigate === "function") {
+          onNavigate("dashboard");
+        } else {
+          // fallback: try history back / root
+          window.location.href = "/dashboard";
+        }
+      } catch (navErr) {
+        console.warn("Navigation after password update failed:", navErr);
+      }
+    }, 900);
+
+  } catch (err: any) {
+    console.error("change-password failed:", err);
+    setError(err?.message ?? txt("Something went wrong.", "कुछ गलत हो गया।"));
+  } finally {
+    setLoading(false);
   }
+}
 
   return (
     <div className="min-h-screen bg-slate-50 p-6 flex justify-center items-start">
@@ -76,25 +111,26 @@ export default function ChangePassword({
         <button
           onClick={() => onNavigate?.("dashboard")}
           className="flex items-center gap-2 text-slate-600 hover:text-black mb-4"
+          type="button"
         >
           <ArrowLeft className="w-4 h-4" />
-          Back
+          {txt("Back", "वापस")}
         </button>
 
         <div className="bg-white shadow-md rounded-2xl p-8 border border-gray-200">
           <h2 className="text-2xl font-extrabold text-[#002B5C] text-center mb-6">
-            Change Password
+            {txt("Change Password", "पासवर्ड बदलें")}
           </h2>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             {/* Current Password */}
             <div>
               <label className="block text-sm font-medium mb-2">
-                Current Password
+                {txt("Current Password", "वर्तमान पासवर्ड")}
               </label>
               <Input
                 type="password"
-                placeholder="Enter current password"
+                placeholder={txt("Enter current password", "वर्तमान पासवर्ड दर्ज करें")}
                 value={currentPassword}
                 onChange={(e) => setCurrentPassword(e.target.value)}
               />
@@ -103,11 +139,11 @@ export default function ChangePassword({
             {/* New Password */}
             <div>
               <label className="block text-sm font-medium mb-2">
-                New Password
+                {txt("New Password", "नया पासवर्ड")}
               </label>
               <Input
                 type="password"
-                placeholder="Enter new password"
+                placeholder={txt("Enter new password", "नया पासवर्ड दर्ज करें")}
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
               />
@@ -116,11 +152,11 @@ export default function ChangePassword({
             {/* Confirm Password */}
             <div>
               <label className="block text-sm font-medium mb-2">
-                Confirm New Password
+                {txt("Confirm New Password", "नया पासवर्ड सत्यापित करें")}
               </label>
               <Input
                 type="password"
-                placeholder="Confirm new password"
+                placeholder={txt("Confirm new password", "नया पासवर्ड सत्यापित करें")}
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
               />
@@ -137,7 +173,7 @@ export default function ChangePassword({
               disabled={loading}
               className="w-full bg-green-600 hover:bg-green-700 text-white py-3"
             >
-              {loading ? "Updating..." : "Update Password"}
+              {loading ? txt("Updating...", "अपडेट किया जा रहा है...") : txt("Update Password", "पासवर्ड अपडेट करें")}
             </Button>
           </form>
         </div>

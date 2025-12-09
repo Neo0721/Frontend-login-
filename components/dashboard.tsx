@@ -35,11 +35,21 @@ type Application = {
 
 export default function Dashboard({
   onNavigate,
-  language,
+  language: initialLanguage = "en",
   userName = "John Doe",
   empNo = "EMP001",
   onChangePassword,
 }: DashboardProps) {
+  // local language state — initialized from the prop if provided
+  const [language, setLanguage] = useState<"en" | "hi">(initialLanguage)
+
+  // === SYNC FIX: ensure local state follows prop changes ===
+  // This keeps `language` up-to-date when the parent toggles language.
+  useEffect(() => {
+    setLanguage(initialLanguage)
+  }, [initialLanguage])
+  // =========================================================
+
   const [showIdCardForm, setShowIdCardForm] = useState(false)
   const [hasApplied, setHasApplied] = useState(false)
 
