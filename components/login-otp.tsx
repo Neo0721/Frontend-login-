@@ -53,11 +53,12 @@ export default function LoginOTP({ onNavigate, language }: LoginOTPProps) {
       }
 
       if (name === "empNo") {
-        if (!/^\d+$/.test(value)) {
+        // Allow alphanumeric employee numbers (no spaces or special chars)
+        if (!/^[a-zA-Z0-9]+$/.test(value)) {
           next.empNo =
             language === "en"
-              ? "Employee number must contain only digits"
-              : "कर्मचारी संख्या में केवल अंक होने चाहिए"
+              ? "Employee number must be alphanumeric (letters and digits only)"
+              : "कर्मचारी संख्या अल्फ़ान्यूमेरिक होनी चाहिए (केवल अक्षर और अंक)"
         } else delete next.empNo
       }
 
@@ -82,7 +83,8 @@ export default function LoginOTP({ onNavigate, language }: LoginOTPProps) {
     validateField("email", email)
 
     const mobileOk = /^\d{10}$/.test(mobile)
-    const empNoOk = /^\d+$/.test(empNo)
+    // UPDATED: allow alphanumeric empNo
+    const empNoOk = /^[a-zA-Z0-9]+$/.test(empNo)
     const emailOk = email.length === 0 ? true : isValidEmail(email)
 
     if (mobileOk && empNoOk && emailOk && !Object.keys(errors).length) {
@@ -145,7 +147,8 @@ export default function LoginOTP({ onNavigate, language }: LoginOTPProps) {
                     type="text"
                     value={empNo}
                     onChange={(e) => {
-                      const v = e.target.value.replace(/\D/g, "")
+                      // Allow only alphanumeric chars, remove spaces/symbols
+                      const v = e.target.value.replace(/[^a-zA-Z0-9]/g, "")
                       setEmpNo(v)
                       validateField("empNo", v)
                     }}

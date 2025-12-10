@@ -400,13 +400,17 @@ export default function IdCardForm({
   // UPDATED: mark touched when updating a family member (to enable live validation)
   const updateFamilyMember = (id: string, field: keyof FamilyMember, value: any) => {
     setFamilyMembers((p) => p.map((m) => (m.id === id ? { ...m, [field]: value } : m)))
-    // If this is primary member (first in array), mark touched keys for name/age
+    // If this is primary member (first in array), mark touched keys for name/age/doc
     try {
       const primaryId = familyMembers?.[0]?.id
       if (id === primaryId) {
         if (field === "name") touch("family.0.name")
         if (field === "age") touch("family.0.age")
+        if (field === "doc") touch("family.0.doc")
       }
+      // also touch the specific doc key for this member to ensure error shows
+      const idx = familyMembers.findIndex((m) => m.id === id)
+      if (idx >= 0) touch(`family.${idx}.doc`)
     } catch {}
   }
 
@@ -480,6 +484,44 @@ export default function IdCardForm({
         }
       }
     }
+
+    // NEW: require user photo & signature and validate sizes/types
+    // Photo: required, image/*, max 2 MB
+    if (!userPhoto) {
+      e.userPhoto = txt("User photo is required.","उपयोगकर्ता फ़ोटो आवश्यक है।")
+    } else if (userPhoto instanceof File) {
+      const allowed = ["image/jpeg", "image/png", "image/webp"]
+      if (!allowed.includes(userPhoto.type)) e.userPhoto = txt("Photo must be JPG/PNG/WebP.","फ़ोटो JPG/PNG/WebP होना चाहिए।")
+      else if (userPhoto.size > 2 * 1024 * 1024) e.userPhoto = txt("Photo must be <= 2 MB.","फ़ोटो 2MB से अधिक नहीं हो सकती।")
+    }
+
+    // Signature: required, image/*, max 1 MB
+    if (!signature) {
+      e.signature = txt("Signature image is required.","हस्ताक्षर छवि आवश्यक है।")
+    } else if (signature instanceof File) {
+      const allowed = ["image/png", "image/jpeg", "image/webp"]
+      if (!allowed.includes(signature.type)) e.signature = txt("Signature must be JPG/PNG/WebP.","हस्ताक्षर JPG/PNG/WebP होना चाहिए।")
+      else if (signature.size > 1 * 1024 * 1024) e.signature = txt("Signature must be <= 1 MB.","हस्ताक्षर 1MB से अधिक नहीं हो सकता।")
+    }
+
+    // NEW: require supporting document for each family member (<=5MB, PDF/JPG/PNG)
+    const familyDocErrors: Record<string, string> = {}
+    familyMembers.forEach((m, i) => {
+      const key = `family.${i}.doc`
+      if (!m.doc) {
+        familyDocErrors[key] = txt("Supporting document is required for each family member.","प्रत्येक परिवार के सदस्य के लिए समर्थन दस्तावेज़ आवश्यक है।")
+      } else if (m.doc instanceof File) {
+        const allowed = ["application/pdf", "image/jpeg", "image/png"]
+        if (!allowed.includes(m.doc.type)) {
+          familyDocErrors[key] = txt("Supporting doc must be PDF/JPG/PNG.","समर्थन दस्तावेज़ PDF/JPG/PNG होना चाहिए।")
+        } else if (m.doc.size > 5 * 1024 * 1024) {
+          familyDocErrors[key] = txt("Supporting doc must be <= 5 MB.","समर्थन दस्तावेज़ 5MB से अधिक नहीं हो सकता।")
+        }
+      }
+    })
+
+    Object.assign(e, familyDocErrors)
+
     setErrors(e)
     return Object.keys(e).length === 0
   }
@@ -542,7 +584,6 @@ export default function IdCardForm({
         return null
       case "state":
         if (!String(value).trim()) return t(txt("State is required.","राज्य आवश्यक है।"))
-
       case "family.0.name": {
         const primary = fam[0]
         if (!primary?.name?.trim()) return t(txt("Primary member name is required.","प्राथमिक सदस्य का नाम आवश्यक है।"))
@@ -559,7 +600,23 @@ export default function IdCardForm({
         if (dtNoTime > todayNoTime) return t(txt("DOB cannot be in the future.","जन्मतिथि भविष्य में नहीं हो सकती।"))
         return null
       }
-
+      // photo & signature fields
+      case "userPhoto":
+        if (!userPhoto) return t(txt("User photo is required.","उपयोगकर्ता फ़ोटो आवश्यक है।"))
+        if (userPhoto instanceof File) {
+          const allowed = ["image/jpeg", "image/png", "image/webp"]
+          if (!allowed.includes(userPhoto.type)) return t(txt("Photo must be JPG/PNG/WebP.","फ़ोटो JPG/PNG/WebP होना चाहिए।"))
+          if (userPhoto.size > 2 * 1024 * 1024) return t(txt("Photo must be <= 2 MB.","फ़ोटो 2MB से अधिक नहीं हो सकती।"))
+        }
+        return null
+      case "signature":
+        if (!signature) return t(txt("Signature image is required.","हस्ताक्षर छवि आवश्यक है।"))
+        if (signature instanceof File) {
+          const allowed = ["image/png", "image/jpeg", "image/webp"]
+          if (!allowed.includes(signature.type)) return t(txt("Signature must be JPG/PNG/WebP.","हस्ताक्षर JPG/PNG/WebP होना चाहिए।"))
+          if (signature.size > 1 * 1024 * 1024) return t(txt("Signature must be <= 1 MB.","हस्ताक्षर 1MB से अधिक नहीं हो सकता।"))
+        }
+        return null
       default:
         return null
     }
@@ -608,6 +665,32 @@ export default function IdCardForm({
       }
     }
 
+    // photo & signature checks (required)
+    if (!userPhoto) fullErrors.userPhoto = txt("User photo is required.","उपयोगकर्ता फ़ोटो आवश्यक है।")
+    else if (userPhoto instanceof File) {
+      const allowed = ["image/jpeg", "image/png", "image/webp"]
+      if (!allowed.includes(userPhoto.type)) fullErrors.userPhoto = txt("Photo must be JPG/PNG/WebP.","फ़ोटो JPG/PNG/WebP होना चाहिए।")
+      else if (userPhoto.size > 2 * 1024 * 1024) fullErrors.userPhoto = txt("Photo must be <= 2 MB.","फ़ोटो 2MB से अधिक नहीं हो सकती।")
+    }
+
+    if (!signature) fullErrors.signature = txt("Signature image is required.","हस्ताक्षर छवि आवश्यक है।")
+    else if (signature instanceof File) {
+      const allowed = ["image/png", "image/jpeg", "image/webp"]
+      if (!allowed.includes(signature.type)) fullErrors.signature = txt("Signature must be JPG/PNG/WebP.","हस्ताक्षर JPG/PNG/WebP होना चाहिए।")
+      else if (signature.size > 1 * 1024 * 1024) fullErrors.signature = txt("Signature must be <= 1 MB.","हस्ताक्षर 1MB से अधिक नहीं हो सकता।")
+    }
+
+    // family member supporting docs required
+    familyMembers.forEach((m, i) => {
+      const key = `family.${i}.doc`
+      if (!m.doc) fullErrors[key] = txt("Supporting document is required for each family member.","प्रत्येक परिवार के सदस्य के लिए समर्थन दस्तावेज़ आवश्यक है।")
+      else if (m.doc instanceof File) {
+        const allowed = ["application/pdf", "image/jpeg", "image/png"]
+        if (!allowed.includes(m.doc.type)) fullErrors[key] = txt("Supporting doc must be PDF/JPG/PNG.","समर्थन दस्तावेज़ PDF/JPG/PNG होना चाहिए।")
+        else if (m.doc.size > 5 * 1024 * 1024) fullErrors[key] = txt("Supporting doc must be <= 5 MB.","समर्थन दस्तावेज़ 5MB से अधिक नहीं हो सकता।")
+      }
+    })
+
     // filter by touched so we only show errors for fields the user interacted with
     const visibleErrors: Record<string, string> = {}
     for (const k of Object.keys(fullErrors)) {
@@ -622,7 +705,7 @@ export default function IdCardForm({
   useEffect(() => {
     validateAll()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [formData, familyMembers, forwardingOfficer, touched])
+  }, [formData, familyMembers, forwardingOfficer, touched, userPhoto, signature])
 
   // Helper: if something is blocking the button, flash a red outline around that element (and log it)
   const inspectBlockingElement = (btn: HTMLButtonElement) => {
@@ -749,7 +832,11 @@ export default function IdCardForm({
       // NEW keys
       "aadhaarNumber",
       "bloodGroup",
+      "userPhoto",
+      "signature",
     ]
+    // plus every family doc key
+    familyMembers.forEach((m, i) => keys.push(`family.${i}.doc`))
     const newTouched = { ...touched }
     keys.forEach((k) => (newTouched[k] = true))
     setTouched(newTouched)
@@ -822,7 +909,7 @@ export default function IdCardForm({
           if (!formData.department) fullErrs.department = txt("Department is required.","विभाग आवश्यक है।")
           if (!formData.unit?.trim()) fullErrs.unit = txt("Unit is required.","यूनिट आवश्यक है।")
           if (!formData.employeeNameEn?.trim()) fullErrs.employeeNameEn = txt("Employee name is required.","कर्मचारी का नाम आवश्यक है।")
-          if (!formData.designationEn?.trim()) fullErrs.designationEn = txt("Designation is required.","पद आवश्यक है।")
+          if (!formData.designationEn?.trim()) fullErrs.employeeNameEn = txt("Designation is required.","पद आवश्यक है।")
           if (!formData.dateOfAppointment) fullErrs.dateOfAppointment = txt("Date of appointment is required.","नियुक्ति की तारीख आवश्यक है।")
           if (!formData.residentialAddress?.trim()) fullErrs.residentialAddress = txt("Residential address is required.","निवास पता आवश्यक है।")
           if (!formData.email) fullErrs.email = txt("Email is required.","ईमेल आवश्यक है।")
@@ -844,6 +931,9 @@ export default function IdCardForm({
           if (!formData.aadhaarNumber) fullErrs.aadhaarNumber = txt("Aadhaar number is required.","आधार नंबर आवश्यक है।")
           else if (!/^\d{12}$/.test(String(formData.aadhaarNumber))) fullErrs.aadhaarNumber = txt("Enter a valid 12-digit Aadhaar number","मान्य 12-अंकीय आधार नंबर दर्ज करें।")
           if (!formData.bloodGroup) fullErrs.bloodGroup = txt("Blood group is required.","रक्त समूह आवश्यक है।")
+          // photo & signature
+          if (!userPhoto) fullErrs.userPhoto = txt("User photo is required.","उपयोगकर्ता फ़ोटो आवश्यक है।")
+          if (!signature) fullErrs.signature = txt("Signature image is required.","हस्ताक्षर छवि आवश्यक है।")
           return fullErrs
         })())[0]
 
@@ -1124,7 +1214,13 @@ export default function IdCardForm({
     if (!file) return
     // accept only image types
     if (!/^image\//.test(file.type)) {
-      alert(txt("Please upload an image file (JPG/PNG).","कृपया एक छवि फ़ाइल अपलोड करें (JPG/PNG)।"))
+      alert(txt("Please upload an image file (JPG/PNG/WebP).","कृपया एक छवि फ़ाइल अपलोड करें (JPG/PNG/WebP)।"))
+      return
+    }
+    // max 2MB
+    const maxPhotoSize = 2 * 1024 * 1024
+    if (file.size > maxPhotoSize) {
+      alert(txt("Photo must be 2 MB or smaller.","फ़ोटो 2MB या उससे छोटी होनी चाहिए।"))
       return
     }
 
@@ -1138,6 +1234,13 @@ export default function IdCardForm({
       console.warn("Failed to create object URL for user photo", err)
       setUserPhotoPreview(null)
     }
+    // mark touched + clear any photo errors
+    touch("userPhoto")
+    setErrors((p) => {
+      const copy = { ...p }
+      delete copy.userPhoto
+      return copy
+    })
     // allow selecting same file again
     if (e.currentTarget) e.currentTarget.value = ""
   }
@@ -1146,13 +1249,20 @@ export default function IdCardForm({
     try { if (userPhotoPreview) URL.revokeObjectURL(userPhotoPreview) } catch {}
     setUserPhoto(null)
     setUserPhotoPreview(null)
+    touch("userPhoto")
   }
 
   const handleSignatureChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.currentTarget.files?.[0] ?? null
     if (!file) return
     if (!/^image\//.test(file.type)) {
-      alert(txt("Please upload an image file for signature (JPG/PNG).","कृपया हस्ताक्षर के लिए एक छवि फ़ाइल अपलोड करें (JPG/PNG)।"))
+      alert(txt("Please upload an image file for signature (JPG/PNG/WebP).","कृपया हस्ताक्षर के लिए एक छवि फ़ाइल अपलोड करें (JPG/PNG/WebP)।"))
+      return
+    }
+    // max 1MB for signature
+    const maxSigSize = 1 * 1024 * 1024
+    if (file.size > maxSigSize) {
+      alert(txt("Signature must be 1 MB or smaller.","हस्ताक्षर 1MB या उससे छोटा होना चाहिए।"))
       return
     }
 
@@ -1165,6 +1275,12 @@ export default function IdCardForm({
       console.warn("Failed to create object URL for signature", err)
       setSignaturePreview(null)
     }
+    touch("signature")
+    setErrors((p) => {
+      const copy = { ...p }
+      delete copy.signature
+      return copy
+    })
     if (e.currentTarget) e.currentTarget.value = ""
   }
 
@@ -1172,6 +1288,7 @@ export default function IdCardForm({
     try { if (signaturePreview) URL.revokeObjectURL(signaturePreview) } catch {}
     setSignature(null)
     setSignaturePreview(null)
+    touch("signature")
   }
   // -----------------------------------------------------------------------
 
@@ -1606,11 +1723,12 @@ export default function IdCardForm({
                     className="rounded-xl px-4 py-3"
                     style={{ background: isSubmitted ? "#94a3b8" : "#0b3355", color: "white", cursor: isSubmitted ? "not-allowed" : "pointer", fontWeight: 600 }}
                   >
-                    {txt("Choose Photo","फोटो चुनें")}
+                    {txt("Choose Photo","फोटो चुनें")} *
                   </label>
                   <input id="photoUpload" type="file" accept="image/*" onChange={handleUserPhotoChange} style={{ display: "none" }} disabled={isSubmitted} />
 
-                  <div style={{ fontSize: 12, color: "#6b7280", textAlign: "center" }}>{txt("Used in application preview","पूर्वावलोकन में उपयोग होता है")}</div>
+                  <div style={{ fontSize: 12, color: "#6b7280", textAlign: "center" }}>{txt("Used in application preview — JPG/PNG/WebP up to 2 MB","पूर्वावलोकन में उपयोग होता है — JPG/PNG/WebP, अधिकतम 2MB")}</div>
+                  {errors.userPhoto && <div style={styles.errorText}>{errors.userPhoto}</div>}
 
                   {/* SIGNATURE below photo */}
                   <div style={{ width: "100%", marginTop: 8, display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
@@ -1627,11 +1745,12 @@ export default function IdCardForm({
                       className="rounded-xl px-4 py-3"
                       style={{ background: isSubmitted ? "#94a3b8" : "#0b3355", color: "white", cursor: isSubmitted ? "not-allowed" : "pointer", fontWeight: 600 }}
                     >
-                      {txt("Choose Signature","हस्ताक्षर चुनें")}
+                      {txt("Choose Signature","हस्ताक्षर चुनें")} *
                     </label>
                     <input id="signatureUpload" type="file" accept="image/*" onChange={handleSignatureChange} style={{ display: "none" }} disabled={isSubmitted} />
 
-                    <div style={{ fontSize: 12, color: "#6b7280", textAlign: "center" }}>{txt("Used in application preview","पूर्वावलोकन में उपयोग होता है")}</div>
+                    <div style={{ fontSize: 12, color: "#6b7280", textAlign: "center" }}>{txt("Used in application preview — JPG/PNG/WebP up to 1 MB","पूर्वावलोकन में उपयोग होता है — JPG/PNG/WebP, अधिकतम 1MB")}</div>
+                    {errors.signature && <div style={styles.errorText}>{errors.signature}</div>}
                   </div>
                 </div>
               </div>
@@ -1685,11 +1804,11 @@ export default function IdCardForm({
                     <div>
                       <RenderLabel text={txt("Full Name","पूरा नाम")} required={idx === 0} />
                       <Input
-                        id="family.0.name"
-                        name="family.0.name"
+                        id={idx === 0 ? "family.0.name" : undefined}
+                        name={idx === 0 ? "family.0.name" : undefined}
                         value={m.name}
-                        onChange={(e: any) => { updateFamilyMember(m.id, "name", e.target.value); touch("family.0.name") }}
-                        onBlur={() => touch("family.0.name")}
+                        onChange={(e: any) => { updateFamilyMember(m.id, "name", e.target.value); touch(`family.${idx}.name`) }}
+                        onBlur={() => touch(`family.${idx}.name`)}
                         placeholder=""
                         disabled={isSubmitted}
                       />
@@ -1713,13 +1832,13 @@ export default function IdCardForm({
                       <RenderLabel text={txt("Age / Date of Birth","आयु / जन्मतिथि")} required={idx === 0} />
                       {/* replaced text input with date picker */}
                       <Input
-                        id="family.0.age"
-                        name="family.0.age"
+                        id={idx === 0 ? "family.0.age" : undefined}
+                        name={idx === 0 ? "family.0.age" : undefined}
                         type="date"
                         placeholder={txt("DD/MM/YYYY","DD/MM/YYYY")}
                         value={m.age}
-                        onChange={(e: any) => { updateFamilyMember(m.id, "age", e.target.value); touch("family.0.age") }}
-                        onBlur={() => touch("family.0.age")}
+                        onChange={(e: any) => { updateFamilyMember(m.id, "age", e.target.value); touch(`family.${idx}.age`) }}
+                        onBlur={() => touch(`family.${idx}.age`)}
                         disabled={isSubmitted}
                       />
                       {idx === 0 && errors["family.0.age"] && <div style={styles.errorText}>{errors["family.0.age"]}</div>}
@@ -1746,8 +1865,8 @@ export default function IdCardForm({
                     </div>
 
                     <div className="md:col-span-2">
-                      <RenderLabel text={txt("Supporting Document (Optional)","समर्थन दस्तावेज़ (वैकल्पिक)")} />
-
+                      {/* Make supporting document required */}
+                      <RenderLabel text={txt("Supporting Document (Required)","समर्थन दस्तावेज़ (आवश्यक)")} required />
                       <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 6 }}>
                         <label htmlFor={`member-doc-${m.id}`} className="rounded-xl px-4 py-2" style={{ border: "1px solid #e6e6e6", background: "white", cursor: isSubmitted ? "not-allowed" : "pointer", fontWeight: 600 }}>
                           {txt("Choose file","फ़ाइल चुनें")}
@@ -1756,7 +1875,37 @@ export default function IdCardForm({
                         <span style={{ color: "#6b7280", fontSize: 14 }}>{m.doc ? (m.doc instanceof File ? m.doc.name : (m.doc as any).name ?? txt("No file chosen","कोई फाइल नहीं")) : txt("No file chosen","कोई फाइल नहीं")}</span>
                       </div>
 
-                      <input id={`member-doc-${m.id}`} type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={(e) => updateFamilyMember(m.id, "doc", e.currentTarget.files?.[0] || null)} style={{ display: "none" }} disabled={isSubmitted} />
+                      <input
+                        id={`member-doc-${m.id}`}
+                        type="file"
+                        accept=".pdf,.jpg,.jpeg,.png"
+                        onChange={(e) => {
+                          const f = e.currentTarget.files?.[0] || null
+                          // validate at selection time (optional)
+                          if (f) {
+                            const allowed = ["application/pdf", "image/jpeg", "image/png"]
+                            if (!allowed.includes(f.type)) {
+                              alert(txt("Supporting doc must be PDF/JPG/PNG.","समर्थन दस्तावेज़ PDF/JPG/PNG होना चाहिए।"))
+                              return
+                            }
+                            if (f.size > 5 * 1024 * 1024) {
+                              alert(txt("Supporting doc must be <= 5 MB.","समर्थन दस्तावेज़ 5MB से अधिक नहीं हो सकता।"))
+                              return
+                            }
+                          }
+                          updateFamilyMember(m.id, "doc", f)
+                          touch(`family.${idx}.doc`)
+                          // clear possible error
+                          setErrors((p) => {
+                            const copy = { ...p }
+                            delete copy[`family.${idx}.doc`]
+                            return copy
+                          })
+                        }}
+                        style={{ display: "none" }}
+                        disabled={isSubmitted}
+                      />
+                      {errors[`family.${idx}.doc`] && <div style={styles.errorText}>{errors[`family.${idx}.doc`]}</div>}
                     </div>
                   </div>
 

@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { useState } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ArrowLeft, Check, X } from "lucide-react"
@@ -40,6 +40,20 @@ export default function RegisterPage({ onNavigate, language }: RegisterPageProps
     empNo?: string
     email?: string
   }>({})
+
+  // -------------------- OTP STATES --------------------
+  const [otpSent, setOtpSent] = useState(false)
+  const [otpMethod, setOtpMethod] = useState<"mobile" | "email">("mobile")
+  const [otpInput, setOtpInput] = useState("")
+  const [otpError, setOtpError] = useState<string | null>(null)
+  const [otpId, setOtpId] = useState<string | null>(null) // if backend returns an id for verification
+  const [resendTimer, setResendTimer] = useState(0)
+  const resendIntervalRef = useRef<number | null>(null)
+
+  // For dev fallback when no backend exists (do NOT use in production)
+  const [generatedOtp, setGeneratedOtp] = useState<string | null>(null)
+
+  // -----------------------------------------------------
 
   const validatePassword = (pwd: string) => {
     const validation = {
@@ -80,13 +94,17 @@ export default function RegisterPage({ onNavigate, language }: RegisterPageProps
       }
 
       if (name === "empNo") {
-        // Employee number: disallow alphabetic characters (allow digits only)
-        if (/\D/.test(value)) {
-          next.empNo = language === "en" ? "Employee number must contain only digits" : "कर्मचारी संख्या में केवल अंक होने चाहिए"
-        } else {
-          delete next.empNo
-        }
-      }
+  // Allow only alphabets + numbers
+  if (!/^[a-zA-Z0-9]*$/.test(value)) {
+    next.empNo =
+      language === "en"
+        ? "Employee number must be alphanumeric"
+        : "कर्मचारी संख्या अल्फ़ान्यूमेरिक होनी चाहिए"
+  } else {
+    delete next.empNo
+  }
+}
+
 
       if (name === "email") {
         if (value.length === 0) {
@@ -121,6 +139,162 @@ export default function RegisterPage({ onNavigate, language }: RegisterPageProps
 
   const isPasswordValid = Object.values(passwordValidation).every(Boolean)
 
+  // -------------------- OTP HELPERS --------------------
+
+  // Start resend countdown (30 seconds)
+  const startResendTimer = (seconds = 30) => {
+    setResendTimer(seconds)
+    if (resendIntervalRef.current) {
+      window.clearInterval(resendIntervalRef.current)
+    }
+    resendIntervalRef.current = window.setInterval(() => {
+      setResendTimer(prev => {
+        if (prev <= 1) {
+          if (resendIntervalRef.current) {
+            window.clearInterval(resendIntervalRef.current)
+            resendIntervalRef.current = null
+          }
+          return 0
+        }
+        return prev - 1
+      })
+    }, 1000)
+  }
+
+  useEffect(() => {
+    return () => {
+      if (resendIntervalRef.current) {
+        window.clearInterval(resendIntervalRef.current)
+      }
+    }
+  }, [])
+
+  // Attempt to call backend to send OTP; if backend fails, fallback to client-side OTP for dev
+  const sendOtpRequest = async (method: "mobile" | "email") => {
+    // Prepare target contact
+    const contact = method === "mobile" ? formData.mobile : formData.email
+
+    try {
+      // Try calling a backend endpoint (you should implement these routes on server)
+      const res = await fetch("/api/send-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          method,
+          contact,
+          empNo: formData.empNo,
+        }),
+      })
+
+      if (!res.ok) {
+        // fallback to client-side OTP
+        throw new Error("Backend not available or returned error")
+      }
+
+      const data = await res.json()
+      // expecting something like { success: true, otpId: 'abc123' }
+      setOtpId(data.otpId ?? null)
+      setOtpSent(true)
+      setOtpError(null)
+      startResendTimer(30)
+      return true
+    } catch (err) {
+      // Fallback: generate OTP locally for dev/testing.
+      const fallbackOtp = (Math.floor(100000 + Math.random() * 900000)).toString()
+      setGeneratedOtp(fallbackOtp)
+      // NOTE: in dev, we'll log OTP to console so developer can test verification
+      // Remove this in production
+      // eslint-disable-next-line no-console
+      console.info(`[DEV] Generated fallback OTP for ${method} (${contact}): ${fallbackOtp}`)
+
+      setOtpId(null)
+      setOtpSent(true)
+      setOtpError(null)
+      startResendTimer(30)
+      return true
+    }
+  }
+
+  const verifyOtpRequest = async (enteredOtp: string) => {
+    try {
+      // If we had an otpId and backend routes, call verify endpoint
+      if (otpId) {
+        const res = await fetch("/api/verify-otp", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ otpId, otp: enteredOtp }),
+        })
+        if (!res.ok) {
+          throw new Error("Invalid OTP")
+        }
+        const data = await res.json()
+        if (data.success) {
+          return true
+        }
+        throw new Error("Invalid OTP")
+      }
+
+      // Otherwise, fallback to verifying against generatedOtp (dev only)
+      if (generatedOtp && enteredOtp === generatedOtp) {
+        return true
+      }
+
+      return false
+    } catch (err) {
+      return false
+    }
+  }
+
+  // Public function to trigger OTP sending (chooses mobile first, but user can change)
+  const triggerOtpSend = async (method?: "mobile" | "email") => {
+    const chosen = method ?? otpMethod
+    setOtpMethod(chosen)
+    // Basic precheck
+    if (chosen === "mobile" && !/^\d{10}$/.test(formData.mobile)) {
+      setErrors(prev => ({ ...prev, mobile: language === "en" ? "Mobile must be exactly 10 digits" : "मोबाइल सही में 10 अंकों का होना चाहिए" }))
+      return false
+    }
+    if (chosen === "email" && !isValidEmail(formData.email)) {
+      setErrors(prev => ({ ...prev, email: language === "en" ? "Enter a valid email address" : "मान्य ईमेल पता दर्ज करें" }))
+      return false
+    }
+
+    const ok = await sendOtpRequest(chosen)
+    return ok
+  }
+
+  const handleVerifyOtp = async () => {
+    setOtpError(null)
+    if (!otpInput || otpInput.trim().length === 0) {
+      setOtpError(language === "en" ? "Please enter the OTP" : "कृपया OTP दर्ज करें")
+      return
+    }
+    const verified = await verifyOtpRequest(otpInput.trim())
+    if (verified) {
+      // OTP verified: proceed to registration success
+      setShowConfirmation(true)
+      setOtpSent(false)
+      setOtpInput("")
+      setGeneratedOtp(null)
+      setOtpId(null)
+      setOtpError(null)
+      if (resendIntervalRef.current) {
+        window.clearInterval(resendIntervalRef.current)
+        resendIntervalRef.current = null
+      }
+    } else {
+      setOtpError(language === "en" ? "Invalid OTP. Please try again." : "अमान्य OTP। कृपया पुन: प्रयास करें।")
+    }
+  }
+
+  const handleResendOtp = async () => {
+    if (resendTimer > 0) return
+    setOtpError(null)
+    await triggerOtpSend(otpMethod)
+  }
+
+  // -----------------------------------------------------
+
   const handleSubmit = () => {
     // Re-validate before submit
     validateField("mobile", formData.mobile)
@@ -131,7 +305,8 @@ export default function RegisterPage({ onNavigate, language }: RegisterPageProps
 
     // Check mobile length explicitly because user may not have triggered validation message yet
     const mobileOk = /^\d{10}$/.test(formData.mobile)
-    const empNoOk = /^\d+$/.test(formData.empNo) || formData.empNo.length === 0 ? /^\d+$/.test(formData.empNo) : false
+    const empNoOk = /^[a-zA-Z0-9]+$/.test(formData.empNo)
+ || formData.empNo.length === 0 ? /^\d+$/.test(formData.empNo) : false
     const emailOk = isValidEmail(formData.email)
 
     if (
@@ -146,7 +321,11 @@ export default function RegisterPage({ onNavigate, language }: RegisterPageProps
       empNoOk &&
       emailOk
     ) {
-      setShowConfirmation(true)
+      // Instead of directly showing confirmation, trigger OTP verification flow
+      // Default to verifying mobile first (you can change to email if desired)
+      // If you want to force server-side verification against official HR DB mobile, implement an API to fetch official mobile using empNo
+      triggerOtpSend("mobile")
+      return
     } else {
       // If there are validation failures, ensure errors state reflects them so user sees messages
       setErrors(prev => {
@@ -193,10 +372,112 @@ export default function RegisterPage({ onNavigate, language }: RegisterPageProps
     )
   }
 
+  // If OTP step is active, show OTP UI overlay/card
+  if (otpSent) {
+    return (
+      <div className="min-h-[calc(100vh-200px)] flex items-center justify-center py-12 px-4">
+        <Card className="p-8 border border-gray-200 max-w-md w-full">
+          <div className="mb-4">
+            <button
+              className="text-sm text-[#002B5C] mb-2"
+              onClick={() => {
+                // allow user to go back to edit form before verification
+                setOtpSent(false)
+                setOtpInput("")
+                setOtpError(null)
+                setGeneratedOtp(null)
+                setOtpId(null)
+                if (resendIntervalRef.current) {
+                  window.clearInterval(resendIntervalRef.current)
+                  resendIntervalRef.current = null
+                }
+              }}
+            >
+              ← {language === "en" ? "Back to Edit" : "संशोधन पर वापस जाएं"}
+            </button>
+            <h3 className="text-lg font-semibold text-[#002B5C]">
+              {language === "en" ? "Verify OTP" : "OTP सत्यापित करें"}
+            </h3>
+            <p className="text-sm text-gray-600 mt-1">
+              {otpMethod === "mobile"
+                ? (language === "en"
+                    ? `An OTP has been sent to your mobile number ${formData.mobile}`
+                    : `OTP आपके मोबाइल नंबर ${formData.mobile} पर भेजा गया है`)
+                : (language === "en"
+                    ? `An OTP has been sent to your email ${formData.email}`
+                    : `OTP आपके ईमेल ${formData.email} पर भेजा गया है`)}
+            </p>
+          </div>
+
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                {language === "en" ? "Enter OTP" : "OTP दर्ज करें"}
+              </label>
+              <Input
+                type="text"
+                name="otp"
+                placeholder={language === "en" ? "Enter OTP" : "OTP दर्ज करें"}
+                value={otpInput}
+                onChange={(e) => setOtpInput(e.target.value.replace(/\D/g, ""))}
+                className="w-full"
+                maxLength={6}
+              />
+              {otpError && <p className="text-xs text-red-600 mt-2">{otpError}</p>}
+              {/* DEV INFO: show generated OTP in console only */}
+              {generatedOtp && (
+                <p className="text-xs text-gray-400 mt-2">
+                  {language === "en"
+                    ? "DEV: OTP generated for testing is logged to the console."
+                    : "डेव: परीक्षण के लिए OTP कंसोल में लॉग किया गया है।"}
+                </p>
+              )}
+            </div>
+
+            <div className="flex gap-2">
+              <Button onClick={handleVerifyOtp} className="flex-1 bg-[#2E7D32] hover:bg-green-700 text-white">
+                {language === "en" ? "Verify OTP" : "OTP सत्यापित करें"}
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  // allow switching method (mobile/email) before resending
+                  // toggle method (if email exists)
+                  if (formData.email) {
+                    const newMethod = otpMethod === "mobile" ? "email" : "mobile"
+                    setOtpMethod(newMethod)
+                  }
+                }}
+                className="flex-1 border"
+              >
+                {language === "en" ? (otpMethod === "mobile" ? "Switch to Email" : "Switch to Mobile") : (otpMethod === "mobile" ? "ईमेल पर स्विच करें" : "मोबाइल पर स्विच करें")}
+              </Button>
+            </div>
+
+            <div className="text-center text-sm text-gray-600">
+              {resendTimer > 0 ? (
+                <p>
+                  {language === "en"
+                    ? `You can resend OTP in ${resendTimer}s`
+                    : `आप ${resendTimer} सेकंड में OTP पुनः भेज सकते हैं`}
+                </p>
+              ) : (
+                <button onClick={handleResendOtp} className="underline text-sm">
+                  {language === "en" ? "Resend OTP" : "OTP पुनः भेजें"}
+                </button>
+              )}
+            </div>
+          </div>
+        </Card>
+      </div>
+    )
+  }
+
   // Determine whether submit button should be disabled (includes errors)
   const hasValidationErrors = Object.keys(errors).length > 0
   const mobileIsValidForButton = /^\d{10}$/.test(formData.mobile)
-  const empNoIsValidForButton = /^\d+$/.test(formData.empNo)
+  const empNoIsValidForButton = /^[a-zA-Z0-9]+$/.test(formData.empNo)
+
   const emailIsValidForButton = isValidEmail(formData.email)
 
   return (

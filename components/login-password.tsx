@@ -51,68 +51,62 @@ export default function LoginPassword({ onNavigate, language }: LoginPasswordPro
   // ----------------------
   // EMP NO VALIDATION LOGIC
   // ----------------------
-  function sanitizeToDigits(v: string) {
-    return v.replace(/\D/g, "")
+  function sanitizeToAlphanumeric(v: string) {
+    return v.replace(/[^a-zA-Z0-9]/g, "")
   }
 
   function handleEmpChange(e: React.ChangeEvent<HTMLInputElement>) {
-  const raw = e.target.value
-  const digitsOnly = raw.replace(/\D/g, "").slice(0, 20) // keep your max length
-  setEmpNo(digitsOnly)
+    const raw = e.target.value
+    const alnumOnly = sanitizeToAlphanumeric(raw).slice(0, 20) // keep your max length
+    setEmpNo(alnumOnly)
 
-  // Show error only when raw input actually had non-digit characters
-  if (raw !== digitsOnly) {
-    setEmpError(
-      language === "en"
-        ? "Employee number must contain only digits"
-        : "कर्मचारी संख्या में केवल अंक होने चाहिए"
-    )
-  } else {
-    setEmpError(null)
+    // Show error only when raw input actually had invalid characters
+    if (raw !== alnumOnly) {
+      setEmpError(
+        language === "en"
+          ? "Employee number must be alphanumeric (letters and digits only)"
+          : "कर्मचारी संख्या अल्फ़ान्यूमेरिक होनी चाहिए (केवल अक्षर और अंक)"
+      )
+    } else {
+      setEmpError(null)
+    }
   }
-}
 
-function handleEmpKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
-  // Allow control/navigation keys
-  const allowed = ["Backspace", "Delete", "ArrowLeft", "ArrowRight", "Tab", "Home", "End"]
-  if (allowed.includes(e.key)) return
+  function handleEmpKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    // Allow control/navigation keys
+    const allowed = ["Backspace", "Delete", "ArrowLeft", "ArrowRight", "Tab", "Home", "End"]
+    if (allowed.includes(e.key)) return
 
-  // Prevent non-digit keypresses, but DON'T set an error here.
-  // Setting an error here can persist even after the next valid change.
-  if (!/^[0-9]$/.test(e.key)) {
+    // Prevent non-alphanumeric keypresses.
+    if (!/^[a-zA-Z0-9]$/.test(e.key)) {
+      e.preventDefault()
+    }
+  }
+
+  function handleEmpPaste(e: React.ClipboardEvent<HTMLInputElement>) {
+    const paste = e.clipboardData.getData("text")
+    const alnum = paste.replace(/[^a-zA-Z0-9]/g, "")
+
+    // Prevent default paste and insert only alphanumeric chars
     e.preventDefault()
-  }
-}
+    setEmpNo((prev) => (prev + alnum).slice(0, 20))
 
-function handleEmpPaste(e: React.ClipboardEvent<HTMLInputElement>) {
-  const paste = e.clipboardData.getData("text")
-  const digits = paste.replace(/\D/g, "")
-
-  // Prevent default paste and insert only digits
-  e.preventDefault()
-  setEmpNo((prev) => (prev + digits).slice(0, 20))
-
-  // Show an informative message only if the pasted text contained non-digits
-  if (paste !== digits) {
-    setEmpError(
-      language === "en"
-        ? "Pasted content contained non-digit characters — they were removed"
-        : "पेस्ट की गई सामग्री में गैर-अंक वर्ण थे — उन्हें हटा दिया गया है"
-    )
-    // clear the message shortly after so the user isn't stuck with it
-    setTimeout(() => setEmpError(null), 3000)
-  } else {
-    setEmpError(null)
-  }
-
-
-
-    e.preventDefault()
-    setEmpNo((prev) => (prev + digits).slice(0, 20))
+    // Show an informative message only if the pasted text contained non-alphanumeric chars
+    if (paste !== alnum) {
+      setEmpError(
+        language === "en"
+          ? "Pasted content contained invalid characters — they were removed"
+          : "पेस्ट की गई सामग्री में अवैध वर्ण थे — उन्हें हटा दिया गया है"
+      )
+      // clear the message shortly after so the user isn't stuck with it
+      setTimeout(() => setEmpError(null), 3000)
+    } else {
+      setEmpError(null)
+    }
   }
 
   function isEmpValid(v: string) {
-    return v.length > 0 && /^\d+$/.test(v)
+    return v.length > 0 && /^[a-zA-Z0-9]+$/.test(v)
   }
 
   // ---------------------------
@@ -175,7 +169,7 @@ function handleEmpPaste(e: React.ClipboardEvent<HTMLInputElement>) {
               </label>
               <Input
                 type="text"
-                inputMode="numeric"
+                inputMode="text"
                 value={empNo}
                 onChange={handleEmpChange}
                 onKeyDown={handleEmpKeyDown}

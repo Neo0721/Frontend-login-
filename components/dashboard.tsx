@@ -53,6 +53,9 @@ export default function Dashboard({
   onChangePassword,
 }: DashboardProps) {
   const [language, setLanguage] = useState<"en" | "hi">(initialLanguage)
+    // Normalize empNo to uppercase one time
+  const normalizedEmpNo = (empNo || "").toString().toUpperCase();
+
 
   useEffect(() => {
     setLanguage(initialLanguage)
@@ -141,7 +144,7 @@ export default function Dashboard({
         obj?.employeeName ??
         obj?.applicantName ??
         userName,
-      employeeNo: obj?.employeeNo ?? obj?.empNo ?? emp,
+      employeeNo: obj?.employeeNo ?? obj?.empNo ?? normalizedEmpNo,
       department: obj?.department ?? obj?.formData?.department,
       designation: obj?.designation ?? obj?.formData?.designationEn,
       dob: obj?.dob ?? obj?.formData?.dateOfBirth,
@@ -165,7 +168,7 @@ export default function Dashboard({
    *
    * IMPORTANT: This function now **returns** { app, message } so callers can use the loaded app immediately
    */
-  async function loadApplication(emp = empNo): Promise<{ app: Application; message: string }> {
+  async function loadApplication(emp = normalizedEmpNo): Promise<{ app: Application; message: string }> {
     setLoadingView(true)
     setViewError(null)
     setLoadedFrom(null)
@@ -197,7 +200,8 @@ export default function Dashboard({
             id: parsed.id ?? `draft-${Date.now()}`,
             formData: fd,
             name: fd.employeeNameEn ?? fd.employeeName ?? userName,
-            employeeNo: emp,
+            employeeNo: normalizedEmpNo
+,
             department: fd.department ?? undefined,
             designation: fd.designation ?? undefined,
             dob: fd.dateOfBirth ?? fd.dateOfAppointment ?? undefined,
@@ -374,7 +378,8 @@ export default function Dashboard({
 
   async function openViewModal() {
     setLoadingView(true)
-    const { app, message } = await loadApplication(empNo)
+    const { app, message } = await loadApplication(normalizedEmpNo)
+
     // ensure UI uses the loaded app immediately
     setApplication(app)
     setViewError(message.startsWith("Showing") ? "Showing your saved draft (local)." : viewError)
@@ -471,7 +476,7 @@ export default function Dashboard({
             <h2 className="text-2xl md:text-3xl font-extrabold text-[#002B5C]">
               {language === "en" ? `Hi, ${userName}` : `नमस्ते, ${userName}`}
             </h2>
-            <p className="text-sm text-gray-600 mt-1">{language === "en" ? `Employee No: ${empNo}` : `कर्मचारी संख्या: ${empNo}`}</p>
+            <p className="text-sm text-gray-600 mt-1">{language === "en" ? `Employee No: ${normalizedEmpNo}` : `कर्मचारी संख्या: ${empNo}`}</p>
           </div>
 
           {/* Quick info card */}
