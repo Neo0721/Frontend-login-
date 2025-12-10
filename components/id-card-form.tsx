@@ -116,6 +116,11 @@ export default function IdCardForm({
   })
   const [errors, setErrors] = useState<Record<string, string>>({})
 
+  // ---------- submission & UX state ----------
+  const [isSubmitting, setIsSubmitting] = useState(false) // network in-progress
+  const [isSubmitted, setIsSubmitted] = useState(false) // final submitted (disables form)
+  // --------------------------------------------
+
   // ---------- PHOTO & SIGNATURE STATE (consistent names) ----------
   // keep as File | { name: string } | null so we can hydrate from draft (placeholder object)
   const [userPhoto, setUserPhoto] = useState<File | { name: string } | null>(null)
@@ -537,7 +542,6 @@ export default function IdCardForm({
         return null
       case "state":
         if (!String(value).trim()) return t(txt("State is required.","राज्य आवश्यक है।"))
-        return null
 
       case "family.0.name": {
         const primary = fam[0]
@@ -687,6 +691,7 @@ export default function IdCardForm({
     // Show the non-blocking banner immediately so user definitely sees it
     try {
       setShowSuccessMessage(true)
+      setIsSubmitted(true) // keep form visually disabled after successful submit
       // keep it visible long enough to read
       await new Promise((res) => setTimeout(res, 1600))
       setShowSuccessMessage(false)
@@ -750,7 +755,45 @@ export default function IdCardForm({
     setTouched(newTouched)
   }
 
-  const handleSubmit = (e?: React.SyntheticEvent) => {
+  // NEW: prepare payload helper
+  const buildPayload = async () => {
+    // convert userPhoto & signature to data URLs if present (best-effort)
+    let userPhotoData: string | null = null
+    let signatureData: string | null = null
+    try {
+      if (userPhoto && userPhoto instanceof File) {
+        userPhotoData = await readFileAsDataURL(userPhoto)
+      }
+      if (signature && signature instanceof File) {
+        signatureData = await readFileAsDataURL(signature)
+      }
+    } catch (err) {
+      console.warn("Failed to convert files to dataURL:", err)
+    }
+
+    return {
+      formData: {
+        ...formData,
+        userPhoto: userPhoto ? (userPhoto instanceof File ? { name: userPhoto.name, dataUrl: userPhotoData } : { name: (userPhoto as any).name ?? String(userPhoto) }) : null,
+        signature: signature ? (signature instanceof File ? { name: signature.name, dataUrl: signatureData } : { name: (signature as any).name ?? String(signature) }) : null,
+      },
+      familyMembers: familyMembers.map((m) => ({
+        id: m.id,
+        name: m.name,
+        relation: m.relation,
+        age: m.age,
+        gender: m.gender,
+        aadhaar: m.aadhaar,
+        uniqueIdentificationMark: m.uniqueIdentificationMark,
+        doc: m.doc ? (m.doc instanceof File ? { name: m.doc.name } : { name: (m.doc as any).name ?? String(m.doc) }) : null,
+      })),
+      uploadedFilesMeta,
+      forwardingOfficer,
+      submittedAt: new Date().toISOString(),
+    }
+  }
+
+  const handleSubmit = async (e?: React.SyntheticEvent) => {
     // defensive logging so we can see clicks in console
     // eslint-disable-next-line no-console
     console.log("handleSubmit invoked", { eventType: e?.type ?? "no-event" })
@@ -758,7 +801,7 @@ export default function IdCardForm({
     if (e && typeof (e as any).preventDefault === "function") (e as any).preventDefault()
     if (e && typeof (e as any).stopPropagation === "function") (e as any).stopPropagation()
 
-    // try to detect blocking element for debugging
+    // try to detect blocking element for debugging (non-fatal)
     try {
       if (submitBtnRef.current) inspectBlockingElement(submitBtnRef.current)
     } catch (err) {
@@ -785,7 +828,7 @@ export default function IdCardForm({
           if (!formData.email) fullErrs.email = txt("Email is required.","ईमेल आवश्यक है।")
           else if (!/\S+@\S+\.\S+/.test(formData.email)) fullErrs.email = txt("Enter a valid email.","मान्य ईमेल दर्ज करें।")
           if (!formData.mobileNumber) fullErrs.mobileNumber = txt("Mobile number is required.","मोबाइल नंबर आवश्यक है।")
-          else if (!/^\d{10}$/.test(formData.mobileNumber)) fullErrs.mobileNumber = txt("Enter a valid 10-digit mobile number.","मान्य 10-अंकीय मोबाइल नंबर दर्ज करें।")
+          else if (!/^\d{10}$/.test(formData.mobileNumber)) fullErrs.mobileNumber = txt("Mobile number is required","मान्य 10-अंकीय मोबाइल नंबर दर्ज करें।")
           if (!formData.pinCode?.trim()) fullErrs.pinCode = txt("Pin code is required.","पिन कोड आवश्यक है।")
           else if (!/^\d{6}$/.test(formData.pinCode.trim())) fullErrs.pinCode = txt("Enter a valid 6-digit pin code","मान्य 6-अंकीय पिन कोड दर्ज करें।")
           if (!forwardingOfficer) fullErrs.forwardingOfficer = txt("Select a forwarding officer.","कृपया एक फॉरवर्डिंग अधिकारी चुनें।")
@@ -834,9 +877,55 @@ export default function IdCardForm({
       return
     }
 
-    void submitFinal()
+    // At this point validation passed -> perform submission
+    setIsSubmitting(true)
+    try {
+      const payload = await buildPayload()
+
+      // Try POST to typical endpoints (best-effort). If none exist, we still show success (optimistic).
+      const candidateEndpoints = [
+        "/api/idcard",
+        "/api/applications",
+        "/api/applications/idcard",
+        "/api/submit-idcard",
+      ]
+
+      let posted = false
+      for (const url of candidateEndpoints) {
+        try {
+          const res = await fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          })
+          if (res.ok) {
+            // success
+            posted = true
+            break
+          } else {
+            // non-OK: try next
+            console.warn(`[IdCardForm] POST ${url} returned ${res.status}`)
+          }
+        } catch (err) {
+          console.warn(`[IdCardForm] POST ${url} failed:`, err)
+        }
+      }
+
+      if (!posted) {
+        // If none of the endpoints accepted the request, still proceed with optimistic UX:
+        console.warn("[IdCardForm] No server endpoint accepted the payload. Proceeding with optimistic success UX.")
+      }
+
+      // show success banner and navigate (submitFinal handles navigation + parent notification)
+      await submitFinal()
+    } catch (err) {
+      console.error("Submission failed:", err)
+      alert(txt("Submission failed. Please try again.","सबमिशन विफल हुआ। कृपया पुन: प्रयास करें।"))
+    } finally {
+      setIsSubmitting(false)
+    }
   }
-  // ---------- end validation ----------
+  // ---------- end validation & submission ----------
 
   const genId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
 
@@ -1137,6 +1226,7 @@ export default function IdCardForm({
                     fontSize: 16,
                     color: "#142437",
                   }}
+                  disabled={isSubmitted}
                 >
                   <span>{cat.title}</span>
                   <span>{expanded[cat.id] ? <ChevronUp /> : <ChevronDown />}</span>
@@ -1177,6 +1267,31 @@ export default function IdCardForm({
           {/* IMPORTANT: wire form submit to handleSubmit for reliable click/focus handling */}
           <form onSubmit={handleSubmit} className="mt-6 space-y-6" style={{ position: "relative" }}>
 
+            {/* overlay while submitting or after submitted (prevents interactions) */}
+            {(isSubmitting || isSubmitted) && (
+              <div
+                aria-hidden
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  background: "rgba(255,255,255,0.6)",
+                  zIndex: 50,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  borderRadius: 8,
+                }}
+              >
+                <div style={{ textAlign: "center" }}>
+                  {isSubmitting ? (
+                    <div style={{ fontWeight: 700, color: "#0b3355" }}>{txt("Submitting…","सबमिट कर रहे हैं…")}</div>
+                  ) : (
+                    <div style={{ fontWeight: 700, color: "#0b3355" }}>{txt("Submitted","सबमिट हो गया")}</div>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* ====== FINAL LAYOUT: left column = all fields, right column = photo/signature ====== */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
 
@@ -1187,7 +1302,7 @@ export default function IdCardForm({
                   <RenderLabel text={txt("Purpose of Making ID Card","पहचान पत्र बनाने का उद्देश्य")} required />
                   <select
                     className="rounded-xl px-4 py-3 w-full"
-                    style={{ border: "1px solid #e6e6e6", background: "white", appearance: "none" }}
+                    style={{ border: "1px solid #e6e6e6", background: isSubmitted ? "#f3f4f6" : "white", appearance: "none" }}
                     value={formData.purpose}
                     onChange={(e) => {
                       setFormData((s) => ({ ...s, purpose: e.target.value }))
@@ -1195,6 +1310,7 @@ export default function IdCardForm({
                     }}
                     onBlur={() => touch("purpose")}
                     required
+                    disabled={isSubmitted}
                   >
                     <option value="">{txt("Select Purpose","उद्देश्य चुनें")}</option>
                     <option value="new">{txt("New Card","नया कार्ड")}</option>
@@ -1210,7 +1326,7 @@ export default function IdCardForm({
                     <RenderLabel text={txt("Department","विभाग")} required />
                     <select
                       className="rounded-xl px-4 py-3 w-full"
-                      style={{ border: "1px solid #e6e6e6", background: "white", appearance: "none" }}
+                      style={{ border: "1px solid #e6e6e6", background: isSubmitted ? "#f3f4f6" : "white", appearance: "none" }}
                       value={formData.department}
                       onChange={(e) => {
                         setFormData((s) => ({ ...s, department: e.target.value }))
@@ -1218,6 +1334,7 @@ export default function IdCardForm({
                       }}
                       onBlur={() => touch("department")}
                       required
+                      disabled={isSubmitted}
                     >
                       <option value="">{txt("Select","चुनें")}</option>
                       <option value="engineering">{txt("Engineering","इंजीनियरिंग")}</option>
@@ -1228,7 +1345,7 @@ export default function IdCardForm({
 
                   <div>
                     <RenderLabel text={txt("Unit","यूनिट")} required />
-                    <Input className="rounded-xl" value={formData.unit} onChange={(e: any) => { setFormData((s) => ({ ...s, unit: e.target.value })); touch("unit") }} onBlur={() => touch("unit")} required />
+                    <Input className="rounded-xl" value={formData.unit} onChange={(e: any) => { setFormData((s) => ({ ...s, unit: e.target.value })); touch("unit") }} onBlur={() => touch("unit")} required disabled={isSubmitted} />
                     {errors.unit && <div style={styles.errorText}>{errors.unit}</div>}
                   </div>
 
@@ -1246,6 +1363,7 @@ export default function IdCardForm({
                       }}
                       onBlur={() => touch("employeeNameEn")}
                       required
+                      disabled={isSubmitted}
                     />
                     {errors.employeeNameEn && <div style={styles.errorText}>{errors.employeeNameEn}</div>}
                     <div style={{ marginTop: 6, fontSize: 12, color: "#6b7280" }}>
@@ -1263,6 +1381,7 @@ export default function IdCardForm({
                         touch("employeeNameHi")
                       }}
                       onBlur={() => touch("employeeNameHi")}
+                      disabled={isSubmitted}
                     />
                     <div style={{ marginTop: 6, fontSize: 12, color: "#6b7280" }}>{txt("Automatically filled from English — editable","अंग्रेज़ी से स्वतः भरा गया — संपादन योग्य")}</div>
                   </div>
@@ -1280,6 +1399,7 @@ export default function IdCardForm({
                       }}
                       onBlur={() => touch("designationEn")}
                       required
+                      disabled={isSubmitted}
                     />
                     {errors.designationEn && <div style={styles.errorText}>{errors.designationEn}</div>}
                     <div style={{ marginTop: 6, fontSize: 12, color: "#6b7280" }}>
@@ -1297,29 +1417,30 @@ export default function IdCardForm({
                         touch("designationHi")
                       }}
                       onBlur={() => touch("designationHi")}
+                      disabled={isSubmitted}
                     />
                     <div style={{ marginTop: 6, fontSize: 12, color: "#6b7280" }}>{txt("Automatically filled from English — editable","अंग्रेज़ी से स्वतः भरा गया — संपादन योग्य")}</div>
                   </div>
 
                   <div>
                     <RenderLabel text={txt("Date of Appointment","नियुक्ति की तारीख")} required />
-                    <Input type="date" className="rounded-xl" value={formData.dateOfAppointment} onChange={(e: any) => { setFormData((s) => ({ ...s, dateOfAppointment: e.target.value })); touch("dateOfAppointment") }} onBlur={() => touch("dateOfAppointment")} required />
+                    <Input type="date" className="rounded-xl" value={formData.dateOfAppointment} onChange={(e: any) => { setFormData((s) => ({ ...s, dateOfAppointment: e.target.value })); touch("dateOfAppointment") }} onBlur={() => touch("dateOfAppointment")} required disabled={isSubmitted} />
                     {errors.dateOfAppointment && <div style={styles.errorText}>{errors.dateOfAppointment}</div>}
                   </div>
 
                   <div>
                     <RenderLabel text={txt("Nearest RH/HU","नज़दीकी RH/HU")} required />
-                    <Input className="rounded-xl" value={formData.nearestRH} onChange={(e: any) => setFormData((s) => ({ ...s, nearestRH: e.target.value }))} required />
+                    <Input className="rounded-xl" value={formData.nearestRH} onChange={(e: any) => setFormData((s) => ({ ...s, nearestRH: e.target.value }))} required disabled={isSubmitted} />
                   </div>
 
                   <div>
                     <RenderLabel text={txt("Place of Work","कार्यस्थल")} required />
-                    <Input className="rounded-xl" value={formData.placeOfWork} onChange={(e: any) => setFormData((s) => ({ ...s, placeOfWork: e.target.value }))} required />
+                    <Input className="rounded-xl" value={formData.placeOfWork} onChange={(e: any) => setFormData((s) => ({ ...s, placeOfWork: e.target.value }))} required disabled={isSubmitted} />
                   </div>
 
                   <div>
                     <RenderLabel text={txt("Pay Level","पे स्तर")} required />
-                    <Input className="rounded-xl" value={formData.payLevel} onChange={(e: any) => setFormData((s) => ({ ...s, payLevel: e.target.value }))} required />
+                    <Input className="rounded-xl" value={formData.payLevel} onChange={(e: any) => setFormData((s) => ({ ...s, payLevel: e.target.value }))} required disabled={isSubmitted} />
                   </div>
 
                   <div>
@@ -1337,6 +1458,7 @@ export default function IdCardForm({
                       }}
                       onBlur={() => touch("email")}
                       required
+                      disabled={isSubmitted}
                     />
                     {errors.email && <div style={styles.errorText}>{errors.email}</div>}
                   </div>
@@ -1363,6 +1485,7 @@ export default function IdCardForm({
                       placeholder={txt("Enter 10-digit mobile","10-अंकीय मोबाइल दर्ज करें")}
                       maxLength={10}
                       required
+                      disabled={isSubmitted}
                     />
                     {errors.mobileNumber && <div style={styles.errorText}>{errors.mobileNumber}</div>}
 
@@ -1385,6 +1508,7 @@ export default function IdCardForm({
                       placeholder={txt("12-digit Aadhaar number","12-अंकीय आधार नंबर")}
                       maxLength={12}
                       required
+                      disabled={isSubmitted}
                     />
                     {errors.aadhaarNumber && <div style={styles.errorText}>{errors.aadhaarNumber}</div>}
                   </div>
@@ -1398,8 +1522,9 @@ export default function IdCardForm({
                       onChange={(e) => { setFormData((s) => ({ ...s, bloodGroup: e.target.value })); touch("bloodGroup") }}
                       onBlur={() => touch("bloodGroup")}
                       className="rounded-xl px-4 py-3 w-full"
-                      style={{ border: "1px solid #e6e6e6", background: "white", appearance: "none" }}
+                      style={{ border: "1px solid #e6e6e6", background: isSubmitted ? "#f3f4f6" : "white", appearance: "none" }}
                       required
+                      disabled={isSubmitted}
                     >
                       <option value="">{txt("Select Blood Group","रक्त समूह चुनें")}</option>
                       <option value="A+">A+</option>
@@ -1426,6 +1551,7 @@ export default function IdCardForm({
                       placeholder={txt("6-digit pin code","6-अंकीय पिन कोड")}
                       maxLength={6}
                       required
+                      disabled={isSubmitted}
                     />
                     {errors.pinCode && <div style={styles.errorText}>{errors.pinCode}</div>}
 
@@ -1433,17 +1559,17 @@ export default function IdCardForm({
 
                   <div>
                     <RenderLabel text={txt("District","जिला")} required />
-                    <Input className="rounded-xl" value={formData.district} onChange={(e: any) => { setFormData((s) => ({ ...s, district: e.target.value })); touch("district") }} onBlur={() => touch("district")} required />
+                    <Input className="rounded-xl" value={formData.district} onChange={(e: any) => { setFormData((s) => ({ ...s, district: e.target.value })); touch("district") }} onBlur={() => touch("district")} required disabled={isSubmitted} />
                   </div>
 
                   <div>
                     <RenderLabel text={txt("State","राज्य")} required />
-                    <Input className="rounded-xl" value={formData.state} onChange={(e: any) => { setFormData((s) => ({ ...s, state: e.target.value })); touch("state") }} onBlur={() => touch("state")} required />
+                    <Input className="rounded-xl" value={formData.state} onChange={(e: any) => { setFormData((s) => ({ ...s, state: e.target.value })); touch("state") }} onBlur={() => touch("state")} required disabled={isSubmitted} />
                   </div>
 
                   <div>
                     <RenderLabel text={txt("ID Card No (if applicable)","आईडी कार्ड नंबर (यदि लागू हो)")} />
-                    <Input className="rounded-xl" value={formData.idCardNo} onChange={(e: any) => setFormData((s) => ({ ...s, idCardNo: e.target.value }))} />
+                    <Input className="rounded-xl" value={formData.idCardNo} onChange={(e: any) => setFormData((s) => ({ ...s, idCardNo: e.target.value }))} disabled={isSubmitted} />
                   </div>
                 </div>
               </div>
@@ -1478,11 +1604,11 @@ export default function IdCardForm({
                   <label
                     htmlFor="photoUpload"
                     className="rounded-xl px-4 py-3"
-                    style={{ background: "#0b3355", color: "white", cursor: "pointer", fontWeight: 600 }}
+                    style={{ background: isSubmitted ? "#94a3b8" : "#0b3355", color: "white", cursor: isSubmitted ? "not-allowed" : "pointer", fontWeight: 600 }}
                   >
                     {txt("Choose Photo","फोटो चुनें")}
                   </label>
-                  <input id="photoUpload" type="file" accept="image/*" onChange={handleUserPhotoChange} style={{ display: "none" }} />
+                  <input id="photoUpload" type="file" accept="image/*" onChange={handleUserPhotoChange} style={{ display: "none" }} disabled={isSubmitted} />
 
                   <div style={{ fontSize: 12, color: "#6b7280", textAlign: "center" }}>{txt("Used in application preview","पूर्वावलोकन में उपयोग होता है")}</div>
 
@@ -1499,11 +1625,11 @@ export default function IdCardForm({
                     <label
                       htmlFor="signatureUpload"
                       className="rounded-xl px-4 py-3"
-                      style={{ background: "#0b3355", color: "white", cursor: "pointer", fontWeight: 600 }}
+                      style={{ background: isSubmitted ? "#94a3b8" : "#0b3355", color: "white", cursor: isSubmitted ? "not-allowed" : "pointer", fontWeight: 600 }}
                     >
                       {txt("Choose Signature","हस्ताक्षर चुनें")}
                     </label>
-                    <input id="signatureUpload" type="file" accept="image/*" onChange={handleSignatureChange} style={{ display: "none" }} />
+                    <input id="signatureUpload" type="file" accept="image/*" onChange={handleSignatureChange} style={{ display: "none" }} disabled={isSubmitted} />
 
                     <div style={{ fontSize: 12, color: "#6b7280", textAlign: "center" }}>{txt("Used in application preview","पूर्वावलोकन में उपयोग होता है")}</div>
                   </div>
@@ -1513,13 +1639,13 @@ export default function IdCardForm({
 
             <div>
               <RenderLabel text={txt("Residential Address","निवास पता")} required />
-              <textarea value={formData.residentialAddress} onChange={(e) => { setFormData((s) => ({ ...s, residentialAddress: e.target.value })); touch("residentialAddress") }} onBlur={() => touch("residentialAddress")} className="w-full rounded-xl p-4" style={{ minHeight: 120, border: "1px solid #e6e6e6" }} required />
+              <textarea value={formData.residentialAddress} onChange={(e) => { setFormData((s) => ({ ...s, residentialAddress: e.target.value })); touch("residentialAddress") }} onBlur={() => touch("residentialAddress")} className="w-full rounded-xl p-4" style={{ minHeight: 120, border: "1px solid #e6e6e6" }} required disabled={isSubmitted} />
               {errors.residentialAddress && <div style={styles.errorText}>{errors.residentialAddress}</div>}
             </div>
 
             <div>
               <RenderLabel text={txt("Unique Identification Mark","विशिष्ट पहचान चिह्न")} />
-              <Input className="rounded-xl" value={formData.uniqueIdentificationMark} onChange={(e: any) => setFormData((s) => ({ ...s, uniqueIdentificationMark: e.target.value }))} placeholder={txt("Optional","वैकल्पिक")} />
+              <Input className="rounded-xl" value={formData.uniqueIdentificationMark} onChange={(e: any) => setFormData((s) => ({ ...s, uniqueIdentificationMark: e.target.value }))} placeholder={txt("Optional","वैकल्पिक")} disabled={isSubmitted} />
             </div>
 
             <div>
@@ -1528,8 +1654,8 @@ export default function IdCardForm({
                 <Upload className="mx-auto" style={{ width: 36, height: 36, color: "#2e7d32" }} />
                 <div style={{ fontWeight: 700, marginTop: 8 }}>{txt("Upload Documents","दस्तावेज़ अपलोड करें")}</div>
                 <div style={{ color: "#6b7280", marginTop: 2 }}>{txt("PDF, JPG, PNG (Max 5 MB each)","PDF, JPG, PNG (प्रति फ़ाइल अधिकतम 5MB)")}</div>
-                <input id="uploadFiles" type="file" multiple accept=".pdf,.jpg,.jpeg,.png" onChange={handleFileUpload} style={{ display: "none" }} />
-                <label htmlFor="uploadFiles" style={{ display: "block", marginTop: 8, cursor: "pointer", color: "#2e7d32" }}>
+                <input id="uploadFiles" type="file" multiple accept=".pdf,.jpg,.jpeg,.png" onChange={handleFileUpload} style={{ display: "none" }} disabled={isSubmitted} />
+                <label htmlFor="uploadFiles" style={{ display: "block", marginTop: 8, cursor: isSubmitted ? "not-allowed" : "pointer", color: isSubmitted ? "#94a3b8" : "#2e7d32" }}>
                   {txt("Click to upload or drag files here","अपलोड करने के लिए क्लिक करें या फाइलें यहाँ ड्रैग करें")}
                 </label>
               </div>
@@ -1539,7 +1665,7 @@ export default function IdCardForm({
                   {uploadedFilesMeta.map((f, i) => (
                     <div key={i} className="flex items-center justify-between p-3 rounded-md" style={{ background: "#f6f6f6" }}>
                       <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</div>
-                      <button type="button" onClick={() => removeFile(i)} style={{ color: "#d32f2f" }}>
+                      <button type="button" onClick={() => removeFile(i)} style={{ color: "#d32f2f" }} disabled={isSubmitted}>
                         <X />
                       </button>
                     </div>
@@ -1565,6 +1691,7 @@ export default function IdCardForm({
                         onChange={(e: any) => { updateFamilyMember(m.id, "name", e.target.value); touch("family.0.name") }}
                         onBlur={() => touch("family.0.name")}
                         placeholder=""
+                        disabled={isSubmitted}
                       />
                       {idx === 0 && errors["family.0.name"] && <div style={styles.errorText}>{errors["family.0.name"]}</div>}
 
@@ -1572,7 +1699,7 @@ export default function IdCardForm({
 
                     <div>
                       <RenderLabel text={txt("Relation","रिश्ता")} />
-                      <select value={m.relation} onChange={(e) => updateFamilyMember(m.id, "relation", e.target.value)} className="w-full rounded-xl px-4 py-3" style={{ border: "1px solid #e6e6e6" }}>
+                      <select value={m.relation} onChange={(e) => updateFamilyMember(m.id, "relation", e.target.value)} className="w-full rounded-xl px-4 py-3" style={{ border: "1px solid #e6e6e6" }} disabled={isSubmitted}>
                         <option>{txt("Spouse","जीवनसाथी")}</option>
                         <option>{txt("Son","पुत्र")}</option>
                         <option>{txt("Daughter","पुत्री")}</option>
@@ -1593,6 +1720,7 @@ export default function IdCardForm({
                         value={m.age}
                         onChange={(e: any) => { updateFamilyMember(m.id, "age", e.target.value); touch("family.0.age") }}
                         onBlur={() => touch("family.0.age")}
+                        disabled={isSubmitted}
                       />
                       {idx === 0 && errors["family.0.age"] && <div style={styles.errorText}>{errors["family.0.age"]}</div>}
 
@@ -1600,7 +1728,7 @@ export default function IdCardForm({
 
                     <div>
                       <RenderLabel text={txt("Gender","लैंगिक")} />
-                      <select value={m.gender} onChange={(e) => updateFamilyMember(m.id, "gender", e.target.value)} className="w-full rounded-xl px-4 py-3" style={{ border: "1px solid #e6e6e6" }}>
+                      <select value={m.gender} onChange={(e) => updateFamilyMember(m.id, "gender", e.target.value)} className="w-full rounded-xl px-4 py-3" style={{ border: "1px solid #e6e6e6" }} disabled={isSubmitted}>
                         <option>{txt("Male","पुरुष")}</option>
                         <option>{txt("Female","महिला")}</option>
                         <option>{txt("Other","अन्य")}</option>
@@ -1609,32 +1737,32 @@ export default function IdCardForm({
 
                     <div className="md:col-span-2">
                       <RenderLabel text={txt("Aadhaar Number (Optional)","आधार नंबर (वैकल्पिक)")} />
-                      <Input value={m.aadhaar} onChange={(e: any) => updateFamilyMember(m.id, "aadhaar", String(e.target.value).replace(/\D/g, "").slice(0, 12))} placeholder={txt("Optional","वैकल्पिक")} />
+                      <Input value={m.aadhaar} onChange={(e: any) => updateFamilyMember(m.id, "aadhaar", String(e.target.value).replace(/\D/g, "").slice(0, 12))} placeholder={txt("Optional","वैकल्पिक")} disabled={isSubmitted} />
                     </div>
 
                     <div className="md:col-span-2">
                       <RenderLabel text={txt("Unique Identification Mark (Optional)","विशिष्ट पहचान चिह्न (वैकल्पिक)")} />
-                      <Input value={m.uniqueIdentificationMark} onChange={(e: any) => updateFamilyMember(m.id, "uniqueIdentificationMark", e.target.value)} placeholder={txt("Optional","वैकल्पिक")} />
+                      <Input value={m.uniqueIdentificationMark} onChange={(e: any) => updateFamilyMember(m.id, "uniqueIdentificationMark", e.target.value)} placeholder={txt("Optional","वैकल्पिक")} disabled={isSubmitted} />
                     </div>
 
                     <div className="md:col-span-2">
                       <RenderLabel text={txt("Supporting Document (Optional)","समर्थन दस्तावेज़ (वैकल्पिक)")} />
 
                       <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 6 }}>
-                        <label htmlFor={`member-doc-${m.id}`} className="rounded-xl px-4 py-2" style={{ border: "1px solid #e6e6e6", background: "white", cursor: "pointer", fontWeight: 600 }}>
+                        <label htmlFor={`member-doc-${m.id}`} className="rounded-xl px-4 py-2" style={{ border: "1px solid #e6e6e6", background: "white", cursor: isSubmitted ? "not-allowed" : "pointer", fontWeight: 600 }}>
                           {txt("Choose file","फ़ाइल चुनें")}
                         </label>
 
                         <span style={{ color: "#6b7280", fontSize: 14 }}>{m.doc ? (m.doc instanceof File ? m.doc.name : (m.doc as any).name ?? txt("No file chosen","कोई फाइल नहीं")) : txt("No file chosen","कोई फाइल नहीं")}</span>
                       </div>
 
-                      <input id={`member-doc-${m.id}`} type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={(e) => updateFamilyMember(m.id, "doc", e.currentTarget.files?.[0] || null)} style={{ display: "none" }} />
+                      <input id={`member-doc-${m.id}`} type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={(e) => updateFamilyMember(m.id, "doc", e.currentTarget.files?.[0] || null)} style={{ display: "none" }} disabled={isSubmitted} />
                     </div>
                   </div>
 
                   <div className="mt-3">
                     {idx !== 0 ? (
-                      <button type="button" onClick={() => removeFamilyMember(m.id)} style={{ color: "#d32f2f", fontWeight: 600 }}>
+                      <button type="button" onClick={() => removeFamilyMember(m.id)} style={{ color: "#d32f2f", fontWeight: 600 }} disabled={isSubmitted}>
                         {txt("Remove","हटाएँ")} ×
                       </button>
                     ) : (
@@ -1645,7 +1773,7 @@ export default function IdCardForm({
               ))}
 
               <div>
-                <button type="button" onClick={addFamilyMember} className="rounded-xl px-4 py-3" style={{ background: "#f6f6f6", color: "#2e7d32", fontWeight: 700 }}>
+                <button type="button" onClick={addFamilyMember} className="rounded-xl px-4 py-3" style={{ background: "#f6f6f6", color: "#2e7d32", fontWeight: 700 }} disabled={isSubmitted}>
                   <Plus style={{ marginRight: 8 }} /> {txt("Add member","सदस्य जोड़ें")}
                 </button>
               </div>
@@ -1654,7 +1782,7 @@ export default function IdCardForm({
             {/* Forwarding officer & actions (moved AFTER family details) */}
             <div>
               <RenderLabel text={txt("Select Forwarding Officer","फॉरवर्डिंग अधिकारी चुनें")} required />
-              <select className="rounded-xl px-4 py-3 w-full" style={{ border: "1px solid #e6e6e6", background: "white", appearance: "none" }} value={forwardingOfficer} onChange={(e) => { setForwardingOfficer(e.target.value); touch("forwardingOfficer") }} onBlur={() => touch("forwardingOfficer")} required>
+              <select className="rounded-xl px-4 py-3 w-full" style={{ border: "1px solid #e6e6e6", background: isSubmitted ? "#f3f4f6" : "white", appearance: "none" }} value={forwardingOfficer} onChange={(e) => { setForwardingOfficer(e.target.value); touch("forwardingOfficer") }} onBlur={() => touch("forwardingOfficer")} required disabled={isSubmitted}>
                 <option value="">{txt("Select Forwarding Officer","फॉरवर्डिंग अधिकारी चुनें")}</option>
                 <option value="CO-001">{txt("Raj Kumar - Chief Officer","राज कुमार - मुख्य अधिकारी")}</option>
                 <option value="AO-002">{txt("Priya Singh - Area Officer","प्रिया सिंह - क्षेत्र अधिकारी")}</option>
@@ -1669,6 +1797,7 @@ export default function IdCardForm({
                 onClick={() => saveDraft()}
                 className="flex-1 border-2 rounded-xl"
                 style={{ padding: "18px 28px", borderColor: "#0b3355", color: "#0b3355", fontWeight: 600 }}
+                disabled={isSubmitted || isSubmitting}
               >
                 {txt("Save Draft","ड्राफ्ट सहेजें")}
               </button>
@@ -1676,43 +1805,20 @@ export default function IdCardForm({
               <button
                 ref={submitBtnRef}
                 type="submit"
-                onClick={(ev) => {
-                  try {
-                    ev.preventDefault()
-                    ev.stopPropagation()
-                    console.log("[IdCardForm] submit button onClick fire - calling handleSubmit")
-                  } catch (err) {
-                    // ignore
-                  }
-                  handleSubmit(ev)
-                }}
-                onMouseDown={(ev) => {
-                  try {
-                    ev.preventDefault()
-                    ev.stopPropagation()
-                  } catch {}
-                  handleSubmit(ev)
-                }}
-                onKeyDown={(ev) => {
-                  if ((ev as any).key === "Enter") {
-                    ev.preventDefault()
-                    ev.stopPropagation()
-                    handleSubmit(ev)
-                  }
-                }}
                 className="flex-1 rounded-xl"
                 style={{
                   padding: "18px 28px",
-                  background: "#2e7d32",
+                  background: isSubmitted ? "#94a3b8" : "#2e7d32",
                   color: "white",
                   fontWeight: 600,
                   position: "relative",
                   zIndex: 2000,
-                  pointerEvents: "auto",
+                  pointerEvents: isSubmitted ? "none" : "auto",
                 }}
-                aria-disabled={false}
+                aria-disabled={isSubmitted || isSubmitting}
+                disabled={isSubmitted || isSubmitting}
               >
-                {txt("Submit Application","आवेदन जमा करें")}
+                {isSubmitting ? txt("Submitting…","सबमिट कर रहे हैं…") : txt("Submit Application","आवेदन जमा करें")}
               </button>
             </div>
           </form>

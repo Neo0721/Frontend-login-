@@ -82,9 +82,37 @@ export default function Dashboard({
   if (showIdCardForm) {
     return (
       <IdCardForm
-        onNavigate={onNavigate}
+        // Provide a local onNavigate so IdCardForm's onNavigate("dashboard") will close the form locally
+        onNavigate={(view?: any) => {
+          if (view === "dashboard") {
+            // close local form UI
+            setShowIdCardForm(false)
+            // do NOT automatically call parent onNavigate for dashboard; parent may also handle navigation if required
+            return
+          }
+          // forward other navigations to parent
+          onNavigate?.(view)
+        }}
         language={language}
         onCancel={() => setShowIdCardForm(false)}
+        // this will be invoked by IdCardForm before it navigates — so it happens in the intended order
+        onSubmitSuccess={() => {
+          // mark applied and persist a minimal lastSubmittedApplication so loadApplication can find it
+          setHasApplied(true)
+          setShowIdCardForm(false)
+          try {
+            const last = {
+              id: `local-${Date.now()}`,
+              status: "Submitted",
+              submittedAt: new Date().toISOString(),
+              // you can expand with formData if IdCardForm's onSubmitSuccess passes a payload in the future
+            }
+            localStorage.setItem("lastSubmittedApplication", JSON.stringify(last))
+          } catch (err) {
+            // ignore
+            console.warn("Could not persist lastSubmittedApplication to localStorage", err)
+          }
+        }}
       />
     )
   }
@@ -182,10 +210,11 @@ export default function Dashboard({
             submittedAt: parsed.updatedAt ?? undefined,
           }
 
-          // set state for UI but also return object
+          // set state for UI but do NOT mark hasApplied true for drafts.
           setApplication(appFromDraft)
           setViewError("Showing your saved draft (local).")
-          setHasApplied(true)
+          // hasApplied should reflect actual submitted status
+          setHasApplied(appFromDraft.status === "Submitted")
           setLoadingView(false)
           setLoadedFrom(`draft:${k}`)
           return { app: appFromDraft, message: "Showing your saved draft (local)." }
@@ -205,7 +234,8 @@ export default function Dashboard({
           const app = normalizeToApplication(parsed, emp)
           setApplication(app)
           setViewError("Loaded your last submitted application (local).")
-          setHasApplied(true)
+          // now properly mark hasApplied only if status indicates submitted
+          setHasApplied((app.status ?? "Submitted") === "Submitted")
           setLoadingView(false)
           setLoadedFrom("lastSubmitted")
           return { app, message: "Loaded your last submitted application (local)." }
@@ -305,7 +335,8 @@ export default function Dashboard({
         }
 
         setApplication(appFromServer)
-        setHasApplied(true)
+        // mark hasApplied only if server reports Submitted status
+        setHasApplied((appFromServer.status ?? "Submitted") === "Submitted")
         setViewError(null)
         setLoadingView(false)
         setLoadedFrom(`server:${url}`)
@@ -331,6 +362,7 @@ export default function Dashboard({
     }
     setApplication(exampleApp)
     setViewError("Could not fetch live data — showing example data.")
+    // example is submitted so mark applied
     setHasApplied(true)
     setLoadingView(false)
     setLoadedFrom("example")
@@ -492,7 +524,9 @@ export default function Dashboard({
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => {
+                onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
+                  e.preventDefault()
+                  e.stopPropagation()
                   void openViewModal()
                 }}
                 className="w-full flex items-center justify-center gap-3 py-3 border-[#002B5C] text-[#002B5C]"
@@ -502,7 +536,9 @@ export default function Dashboard({
 
               <Button
                 type="button"
-                onClick={() => {
+                onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
+                  e.preventDefault()
+                  e.stopPropagation()
                   void handleUpdateClick()
                 }}
                 className="w-full text-white bg-[#1565C0] hover:bg-blue-700 flex items-center justify-center gap-3 py-3"
