@@ -345,6 +345,54 @@ export default function IdCardForm({
   }, [initialData])
   // ---------------------------------------------------------------------
 
+  // ---------- NEW: detect if an application was already submitted (best-effort) ----------
+  useEffect(() => {
+    try {
+      // Extract the employee identifier from initialData if provided
+      const initialEmp = initialData?.formData?.employeeNo ?? initialData?.employeeNo ?? null
+
+      // Only lock the form if:
+      // 1. We have an initialEmp AND
+      // 2. A submitted flag exists for THAT employee
+      if (initialEmp) {
+        try {
+          const flag = localStorage.getItem(`idcard_submitted_${String(initialEmp)}`)
+          if (flag === "true") {
+            console.log("[IdCardForm] Form locked: submitted flag found for", initialEmp)
+            setIsSubmitted(true)
+            return
+          }
+        } catch {}
+      }
+
+      // If mode === "create", NEVER lock the form automatically
+      // Only lock if mode === "edit" and employee already submitted
+      if (mode === "create") {
+        setIsSubmitted(false)
+        return
+      }
+
+      // For other cases, check lastSubmittedApplication as fallback
+      const lastRaw = localStorage.getItem("lastSubmittedApplication")
+      if (lastRaw) {
+        try {
+          const parsed = JSON.parse(lastRaw)
+          if (parsed && (parsed.employeeNo || parsed.employeeId)) {
+            console.log("[IdCardForm] Form locked: lastSubmittedApplication found")
+            setIsSubmitted(true)
+            return
+          }
+        } catch {}
+      }
+
+      setIsSubmitted(false)
+    } catch (err) {
+      console.log("[IdCardForm] Detection error (ignoring):", err)
+      setIsSubmitted(false)
+    }
+  }, [initialData, mode])
+  // -------------------------------------------------------------------------
+
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.currentTarget.files
     if (!files) return
@@ -763,50 +811,84 @@ export default function IdCardForm({
   }
 
   // NOTE: show non-blocking banner immediately, then navigate after a short pause
-  const submitFinal = async () => {
+  // submitFinal now accepts an optional payload so we can persist per-employee data without re-building.
+  const submitFinal = async (payload?: any) => {
     try {
       localStorage.removeItem("idcardDraft")
     } catch (err) {
-      // eslint-disable-next-line no-console
       console.warn("Failed to remove draft from localStorage", err)
     }
 
-    // Show the non-blocking banner immediately so user definitely sees it
+    // Persist per-employee copy & submitted flag
     try {
-      setShowSuccessMessage(true)
-      setIsSubmitted(true) // keep form visually disabled after successful submit
-      // keep it visible long enough to read
-      await new Promise((res) => setTimeout(res, 1600))
-      setShowSuccessMessage(false)
+      const candidateEmp =
+        (payload?.formData?.employeeNo ?? null) ||
+        (formData?.aadhaarNumber ?? null) ||
+        (formData?.idCardNo ?? null)
+
+      if (candidateEmp) {
+        try {
+          const empKey = String(candidateEmp).toUpperCase()
+          const perEmpPayload = payload?.formData ?? (await buildPayload()).formData ?? formData
+          try {
+            localStorage.setItem(`idcard_data_${empKey}`, JSON.stringify(perEmpPayload))
+            localStorage.setItem(`idcard_submitted_${empKey}`, "true")
+            console.log("[IdCardForm] Persisted:", { empKey, submitted: true })
+          } catch (storeErr) {
+            console.warn("submitFinal: failed to persist per-employee data/flag:", storeErr)
+          }
+
+          try {
+            const last = {
+              id: perEmpPayload.employeeNo ?? `local-${Date.now()}`,
+              formData: perEmpPayload,
+              employeeNo: empKey,
+              status: "Submitted",
+              submittedAt: new Date().toISOString(),
+            }
+            localStorage.setItem("lastSubmittedApplication", JSON.stringify(last))
+          } catch (lastErr) {
+            console.warn("submitFinal: failed to write lastSubmittedApplication:", lastErr)
+          }
+        } catch (innerErr) {
+          console.warn("submitFinal per-employee persistence threw:", innerErr)
+        }
+      }
     } catch (err) {
-      // ignore setState errors
+      console.warn("submitFinal: per-employee persistence encountered an error:", err)
     }
 
-    // Notify parent (Dashboard) that submission succeeded so it can update status UI
+    // Show success message
+    setShowSuccessMessage(true)
+    await new Promise((res) => setTimeout(res, 1600))
+    setShowSuccessMessage(false)
+
+    // Call parent callback BEFORE resetting form state
     try {
       onSubmitSuccess?.()
     } catch (cbErr) {
-      // ignore callback errors but log
-      // eslint-disable-next-line no-console
       console.warn("onSubmitSuccess threw:", cbErr)
     }
 
-    // try to navigate back to dashboard via parent's navigation prop; fallback to router
+    // IMPORTANT: Reset form state so it's not frozen
+    setIsSubmitting(false)
+    setIsSubmitted(false)
+
+    // Navigate after a brief pause
+    await new Promise((res) => setTimeout(res, 300))
+
     try {
       if (typeof onNavigate === "function") {
         onNavigate("dashboard")
         return
       }
     } catch (navErr) {
-      // eslint-disable-next-line no-console
       console.warn("onNavigate threw:", navErr)
     }
 
-    // final fallback navigation
     try {
       router.replace("/dashboard")
     } catch (finalErr) {
-      // eslint-disable-next-line no-console
       console.warn("router.replace('/dashboard') threw:", finalErr)
     }
   }
@@ -888,130 +970,24 @@ export default function IdCardForm({
     if (e && typeof (e as any).preventDefault === "function") (e as any).preventDefault()
     if (e && typeof (e as any).stopPropagation === "function") (e as any).stopPropagation()
 
-    // try to detect blocking element for debugging (non-fatal)
-    try {
-      if (submitBtnRef.current) inspectBlockingElement(submitBtnRef.current)
-    } catch (err) {
-      console.warn("inspectBlockingElement threw:", err)
-    }
-
     // Mark all fields touched so errors become visible, then run validateAll
     markAllTouched()
     const ok = validateAll()
 
     if (!ok) {
-      // use the errors object (which now contains visible errors) to scroll to first error
-      try {
-        const firstKey = Object.keys(errors)[0] || Object.keys((() => {
-          // build a stable snapshot of full errors if errors still empty (race)
-          const fullErrs: Record<string, string> = {}
-          if (!formData.purpose) fullErrs.purpose = txt("Purpose is required.","उद्देश्य आवश्यक है।")
-          if (!formData.department) fullErrs.department = txt("Department is required.","विभाग आवश्यक है।")
-          if (!formData.unit?.trim()) fullErrs.unit = txt("Unit is required.","यूनिट आवश्यक है।")
-          if (!formData.employeeNameEn?.trim()) fullErrs.employeeNameEn = txt("Employee name is required.","कर्मचारी का नाम आवश्यक है।")
-          if (!formData.designationEn?.trim()) fullErrs.employeeNameEn = txt("Designation is required.","पद आवश्यक है।")
-          if (!formData.dateOfAppointment) fullErrs.dateOfAppointment = txt("Date of appointment is required.","नियुक्ति की तारीख आवश्यक है।")
-          if (!formData.residentialAddress?.trim()) fullErrs.residentialAddress = txt("Residential address is required.","निवास पता आवश्यक है।")
-          if (!formData.email) fullErrs.email = txt("Email is required.","ईमेल आवश्यक है।")
-          else if (!/\S+@\S+\.\S+/.test(formData.email)) fullErrs.email = txt("Enter a valid email.","मान्य ईमेल दर्ज करें।")
-          if (!formData.mobileNumber) fullErrs.mobileNumber = txt("Mobile number is required.","मोबाइल नंबर आवश्यक है।")
-          else if (!/^\d{10}$/.test(formData.mobileNumber)) fullErrs.mobileNumber = txt("Mobile number is required","मान्य 10-अंकीय मोबाइल नंबर दर्ज करें।")
-          if (!formData.pinCode?.trim()) fullErrs.pinCode = txt("Pin code is required.","पिन कोड आवश्यक है।")
-          else if (!/^\d{6}$/.test(formData.pinCode.trim())) fullErrs.pinCode = txt("Enter a valid 6-digit pin code","मान्य 6-अंकीय पिन कोड दर्ज करें।")
-          if (!forwardingOfficer) fullErrs.forwardingOfficer = txt("Select a forwarding officer.","कृपया एक फॉरवर्डिंग अधिकारी चुनें।")
-          if (!formData.district?.trim()) fullErrs.district = txt("District is required.","जिला आवश्यक है।")
-          if (!formData.state?.trim()) fullErrs.state = txt("State is required.","राज्य आवश्यक है।")
-          if (!familyMembers || familyMembers.length === 0) fullErrs.family = txt("Add at least one family member.","कम से कम एक परिवार का सदस्य जोड़ें।")
-          else {
-            const primary = familyMembers[0]
-            if (!primary.name?.trim()) fullErrs["family.0.name"] = txt("Primary member name is required.","प्राथमिक सदस्य का नाम आवश्यक है।")
-            if (!primary.age?.trim()) fullErrs["family.0.age"] = txt("Primary member DOB is required.","प्राथमिक सदस्य की जन्मतिथि आवश्यक है।")
-          }
-          // new checks snapshot
-          if (!formData.aadhaarNumber) fullErrs.aadhaarNumber = txt("Aadhaar number is required.","आधार नंबर आवश्यक है।")
-          else if (!/^\d{12}$/.test(String(formData.aadhaarNumber))) fullErrs.aadhaarNumber = txt("Enter a valid 12-digit Aadhaar number","मान्य 12-अंकीय आधार नंबर दर्ज करें।")
-          if (!formData.bloodGroup) fullErrs.bloodGroup = txt("Blood group is required.","रक्त समूह आवश्यक है।")
-          // photo & signature
-          if (!userPhoto) fullErrs.userPhoto = txt("User photo is required.","उपयोगकर्ता फ़ोटो आवश्यक है।")
-          if (!signature) fullErrs.signature = txt("Signature image is required.","हस्ताक्षर छवि आवश्यक है।")
-          return fullErrs
-        })())[0]
-
-        if (firstKey) {
-          console.warn("[IdCardForm] First validation error:", firstKey, errors[firstKey])
-
-          // Try to find an element with id equal to the error key
-          const el = document.getElementById(firstKey) as HTMLElement | null
-
-          // Fallback: find any input/textarea/select that has data-field attribute
-          const el2 =
-            el ||
-            document.querySelector(
-              `[data-field="${firstKey}"], input[name="${firstKey}"], textarea[name="${firstKey}"], select[name="${firstKey}"]`
-            ) as HTMLElement | null
-
-          if (el2) {
-            try {
-              el2.scrollIntoView({ behavior: "smooth", block: "center" })
-              // try to focus an input inside (if not focusable directly)
-              const focusable = (el2 as HTMLElement).querySelector ? (el2 as HTMLElement).querySelector("input, textarea, select, button") : null
-              ;(focusable as HTMLElement | null)?.focus?.()
-              ;(el2 as HTMLElement).focus?.()
-            } catch {}
-          }
-        }
-      } catch (err) {
-        console.warn("handleSubmit scrolling to error failed", err)
-      }
-
+      setIsSubmitting(false)
       return
     }
 
-    // At this point validation passed -> perform submission
+    // At this point validation passed → perform submission
     setIsSubmitting(true)
     try {
       const payload = await buildPayload()
-
-      // Try POST to typical endpoints (best-effort). If none exist, we still show success (optimistic).
-      const candidateEndpoints = [
-        "/api/idcard",
-        "/api/applications",
-        "/api/applications/idcard",
-        "/api/submit-idcard",
-      ]
-
-      let posted = false
-      for (const url of candidateEndpoints) {
-        try {
-          const res = await fetch(url, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
-          })
-          if (res.ok) {
-            // success
-            posted = true
-            break
-          } else {
-            // non-OK: try next
-            console.warn(`[IdCardForm] POST ${url} returned ${res.status}`)
-          }
-        } catch (err) {
-          console.warn(`[IdCardForm] POST ${url} failed:`, err)
-        }
-      }
-
-      if (!posted) {
-        // If none of the endpoints accepted the request, still proceed with optimistic UX:
-        console.warn("[IdCardForm] No server endpoint accepted the payload. Proceeding with optimistic success UX.")
-      }
-
-      // show success banner and navigate (submitFinal handles navigation + parent notification)
-      await submitFinal()
+      await submitFinal(payload)
     } catch (err) {
-      console.error("Submission failed:", err)
-      alert(txt("Submission failed. Please try again.","सबमिशन विफल हुआ। कृपया पुन: प्रयास करें।"))
-    } finally {
+      // eslint-disable-next-line no-console
+      console.error("[IdCardForm] submission failed", err)
+      alert(txt("Submission failed. Please try again.", "सबमिशन विफल। कृपया पुनः प्रयास करें।"))
       setIsSubmitting(false)
     }
   }
@@ -1432,7 +1408,7 @@ export default function IdCardForm({
                     <option value="">{txt("Select Purpose","उद्देश्य चुनें")}</option>
                     <option value="new">{txt("New Card","नया कार्ड")}</option>
                     <option value="promotion">{txt("Promotion","पदोन्नति")}</option>
-                    <option value="lost">{txt("Replacement - Lost","प्रतिस्थापन - खोया हुआ")}</option>
+                                       <option value="lost">{txt("Replacement - Lost","प्रतिस्थापन - खोया हुआ")}</option>
                   </select>
                   {errors.purpose && <div style={styles.errorText}>{errors.purpose}</div>}
                 </div>
@@ -1504,7 +1480,7 @@ export default function IdCardForm({
                   </div>
 
                   <div>
-                    <RenderLabel text={txt("Designation (English)","पदोन्नति (अंग्रेज़ी)")} required />
+                    <RenderLabel text={txt("Designation (English)","पदोंन्नति (अंग्रेज़ी)")} required />
                     <Input
                       className="rounded-xl"
                       value={formData.designationEn}
@@ -1599,7 +1575,7 @@ export default function IdCardForm({
                         }
                       }
                       onBlur={() => touch("mobileNumber")}
-                      placeholder={txt("Enter 10-digit mobile","10-अंकीय मोबाइल दर्ज करें")}
+                      placeholder={txt("Enter 10-digit mobile","10-अंकीय मोबाइल नंबर दर्ज करें")}
                       maxLength={10}
                       required
                       disabled={isSubmitted}

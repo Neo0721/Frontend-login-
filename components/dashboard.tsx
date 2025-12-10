@@ -45,6 +45,43 @@ type Application = {
   formData?: Record<string, any> | null
 }
 
+
+// --- BEGIN: helpers to support per-employee "submit once" flow ---
+// Read whether emp has submitted (idcard_submitted_<empNo>)
+function _getSubmittedFlag(empNo?: string) {
+  if (!empNo || empNo.trim().length === 0) {
+    console.warn("[_getSubmittedFlag] empNo is empty:", empNo)
+    return false
+  }
+  try {
+    const key = `idcard_submitted_${empNo}`
+    const value = localStorage.getItem(key)
+    console.log("[_getSubmittedFlag]", key, "=", value)
+    return value === "true"
+  } catch (err) {
+    console.warn("[_getSubmittedFlag] error:", err)
+    return false
+  }
+}
+// Read per-employee saved form data (idcard_data_<empNo>) — tolerant to wrapper or raw
+function _loadPerEmployeeData(empNo?: string) {
+  if (!empNo) return null
+  try {
+    const raw = localStorage.getItem(`idcard_data_${empNo}`)
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    // if wrapper { formData: ... } return inner, else return parsed
+    if (parsed && typeof parsed === "object" && "formData" in parsed) {
+      return parsed.formData ?? parsed
+    }
+    return parsed
+  } catch {
+    return null
+  }
+}
+// --- END helpers ---
+
+
 export default function Dashboard({
   onNavigate,
   language: initialLanguage = "en",
@@ -71,51 +108,39 @@ export default function Dashboard({
   const [viewError, setViewError] = useState<string | null>(null)
   const [loadedFrom, setLoadedFrom] = useState<string | null>(null) // "draft:KEY" | "lastSubmitted" | "server:URL" | "example"
 
+  // Ensure we initialize hasApplied from per-employee flag when component mounts
   useEffect(() => {
-    if (isViewOpen) {
-      const prev = document.body.style.overflow
-      document.body.style.overflow = "hidden"
-      return () => {
-        document.body.style.overflow = prev
-      }
+    if (normalizedEmpNo && normalizedEmpNo.trim().length > 0) {
+      const submitted = _getSubmittedFlag(normalizedEmpNo)
+      setHasApplied(submitted)
+      console.log("[Dashboard] useEffect - Employee:", normalizedEmpNo, "hasApplied:", submitted)
+    } else {
+      setHasApplied(false)
+      console.log("[Dashboard] useEffect - normalizedEmpNo is empty, setting hasApplied to false")
     }
-    return
-  }, [isViewOpen])
+  }, [normalizedEmpNo])
 
+  const handleApplyClick = () => {
+    setShowIdCardForm(true)
+  }
+
+  const handleApplySuccess = () => {
+    // After successful submit, set hasApplied to true
+    setHasApplied(true)
+    setShowIdCardForm(false)
+    console.log("[Dashboard] Application submitted successfully")
+  }
+
+  // Show form if Apply Now was clicked
   if (showIdCardForm) {
     return (
       <IdCardForm
-        // Provide a local onNavigate so IdCardForm's onNavigate("dashboard") will close the form locally
-        onNavigate={(view?: any) => {
-          if (view === "dashboard") {
-            // close local form UI
-            setShowIdCardForm(false)
-            // do NOT automatically call parent onNavigate for dashboard; parent may also handle navigation if required
-            return
-          }
-          // forward other navigations to parent
-          onNavigate?.(view)
-        }}
+        onNavigate={onNavigate}
         language={language}
         onCancel={() => setShowIdCardForm(false)}
-        // this will be invoked by IdCardForm before it navigates — so it happens in the intended order
-        onSubmitSuccess={() => {
-          // mark applied and persist a minimal lastSubmittedApplication so loadApplication can find it
-          setHasApplied(true)
-          setShowIdCardForm(false)
-          try {
-            const last = {
-              id: `local-${Date.now()}`,
-              status: "Submitted",
-              submittedAt: new Date().toISOString(),
-              // you can expand with formData if IdCardForm's onSubmitSuccess passes a payload in the future
-            }
-            localStorage.setItem("lastSubmittedApplication", JSON.stringify(last))
-          } catch (err) {
-            // ignore
-            console.warn("Could not persist lastSubmittedApplication to localStorage", err)
-          }
-        }}
+        onSubmitSuccess={handleApplySuccess}
+        initialData={null}
+        mode="create"
       />
     )
   }
@@ -172,6 +197,43 @@ export default function Dashboard({
     setLoadingView(true)
     setViewError(null)
     setLoadedFrom(null)
+
+    // --- NEW: check per-employee stored data/flag first (highest-priority local per-employee) ---
+    try {
+      const perEmpRaw = localStorage.getItem(`idcard_data_${emp}`)
+      const perEmpFlag = localStorage.getItem(`idcard_submitted_${emp}`)
+      if (perEmpRaw) {
+        try {
+          const parsed = JSON.parse(perEmpRaw)
+          const form = parsed?.formData ?? parsed
+          const appFromPerEmp: Application = {
+            id: `local-${emp}-${Date.now()}`,
+            formData: form,
+            name: form?.employeeNameEn ?? userName,
+            employeeNo: emp,
+            department: form?.department ?? undefined,
+            designation: form?.designationEn ?? undefined,
+            dob: form?.dateOfBirth ?? form?.dateOfAppointment ?? undefined,
+            phone: form?.mobileNumber ?? undefined,
+            photoUrl: form?.photoUrl ?? undefined,
+            documents: form?.uploadedFilesMeta ?? form?.documents ?? undefined,
+            status: perEmpFlag === "true" ? "Submitted" : "Draft",
+            submittedAt: perEmpFlag === "true" ? new Date().toISOString() : undefined,
+          }
+          setApplication(appFromPerEmp)
+          setViewError(perEmpFlag === "true" ? "Loaded your submitted application (local per-employee)." : "Showing your saved draft (local per-employee).")
+          setHasApplied(perEmpFlag === "true")
+          setLoadingView(false)
+          setLoadedFrom("perEmployee")
+          return { app: appFromPerEmp, message: perEmpFlag === "true" ? "Loaded your submitted application (local per-employee)." : "Showing your saved draft (local per-employee)." }
+        } catch (err) {
+          console.warn("[Dashboard] failed to parse per-employee stored data:", err)
+        }
+      }
+    } catch (err) {
+      console.warn("[Dashboard] error reading per-employee localStorage keys:", err)
+    }
+    // --- END per-employee check ---
 
     const draftKeysToTry = [
       "idcardDraft",
@@ -378,21 +440,36 @@ export default function Dashboard({
 
   async function openViewModal() {
     setLoadingView(true)
-    const { app, message } = await loadApplication(normalizedEmpNo)
-
-    // ensure UI uses the loaded app immediately
-    setApplication(app)
-    setViewError(message.startsWith("Showing") ? "Showing your saved draft (local)." : viewError)
-    setLoadingView(false)
-    setIsViewOpen(true)
+    setViewError(null)
+    try {
+      const { app, message } = await loadApplication(normalizedEmpNo)
+      // loadApplication already sets application/hasApplied/loadedFrom appropriately,
+      // but ensure we have application reference here too
+      setApplication(app)
+      setLoadingView(false)
+      setIsViewOpen(true)
+      if (message) console.info("[Dashboard] openViewModal:", message)
+    } catch (err) {
+      console.warn("[Dashboard] openViewModal error:", err)
+      setLoadingView(false)
+      setViewError("Failed to load application. Please try again.")
+      setIsViewOpen(true)
+    }
   }
 
   async function handleUpdateClick() {
+    if (!normalizedEmpNo) return
     setLoadingView(true)
-    const { app } = await loadApplication(empNo)
-    setLoadingView(false)
-    // pass the loaded application directly to the update screen so it can prefill
-    onNavigate?.("update-application", app)
+    try {
+      const { app } = await loadApplication(normalizedEmpNo)
+      setLoadingView(false)
+      // open update screen with loaded application
+      onNavigate?.("update-application", app)
+    } catch (err) {
+      console.warn("[Dashboard] handleUpdateClick error:", err)
+      setLoadingView(false)
+      alert("Could not load application for update. Please try again.")
+    }
   }
 
   function closeViewModal() {
@@ -532,9 +609,12 @@ export default function Dashboard({
                 onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
                   e.preventDefault()
                   e.stopPropagation()
+                  if (!hasApplied) return
                   void openViewModal()
                 }}
-                className="w-full flex items-center justify-center gap-3 py-3 border-[#002B5C] text-[#002B5C]"
+                disabled={!hasApplied}
+                title={!hasApplied ? (language === "en" ? "Preview disabled until you apply" : "आवेदन करने तक पूर्वावलोकन अक्षम है") : undefined}
+                className={`w-full flex items-center justify-center gap-3 py-3 border-[#002B5C] text-[#002B5C] ${!hasApplied ? "opacity-60 cursor-not-allowed" : ""}`}
               >
                 {language === "en" ? "Preview Application" : "आवेदन पूर्वावलोकन"}
               </Button>
@@ -544,9 +624,12 @@ export default function Dashboard({
                 onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
                   e.preventDefault()
                   e.stopPropagation()
+                  if (!hasApplied) return
                   void handleUpdateClick()
                 }}
-                className="w-full text-white bg-[#1565C0] hover:bg-blue-700 flex items-center justify-center gap-3 py-3"
+                disabled={!hasApplied}
+                title={!hasApplied ? (language === "en" ? "Update disabled until you apply" : "आवेदन करने तक अपडेट अक्षम है") : undefined}
+                className={`w-full text-white bg-[#1565C0] hover:bg-blue-700 flex items-center justify-center gap-3 py-3 ${!hasApplied ? "opacity-60 cursor-not-allowed" : ""}`}
               >
                 {language === "en" ? "Update Application" : "आवेदन अपडेट करें"}
               </Button>

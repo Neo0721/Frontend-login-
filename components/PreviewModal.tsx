@@ -28,6 +28,25 @@ interface PreviewModalProps {
   renderDocumentItem?: (doc: string | ApplicationDocument, idx: number) => React.ReactNode;
 }
 
+// --- BEGIN: helper to read per-employee saved form from localStorage ---
+// tolerant to either a raw form object or a wrapper { formData: {...} }
+function _loadPerEmployeeData(empNo?: string) {
+  if (!empNo) return null;
+  try {
+    const raw = localStorage.getItem(`idcard_data_${empNo}`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    // if saved as wrapper { formData: {...} }
+    if (parsed && typeof parsed === "object" && "formData" in parsed) {
+      return parsed.formData ?? parsed;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+// --- END helpers ---
+
 export default function PreviewModal({
   open,
   onClose,
@@ -72,6 +91,27 @@ export default function PreviewModal({
     );
   };
 
+  // Compute employee identifier (if any) and prefer showing per-employee saved data
+  const empNoFromData =
+    data?.employeeNo ?? data?.formData?.employeeNo ?? (data?.id ?? null);
+
+  // Try to load per-employee saved form values from localStorage (idcard_data_<empNo>)
+  const perEmpForm = _loadPerEmployeeData(empNoFromData ?? undefined);
+
+  // mergedForm: priority order
+  // 1) data.formData (highest)
+  // 2) per-employee saved form from localStorage
+  // 3) top-level `data` fields (legacy)
+  const mergedForm = {
+    ...(perEmpForm ?? {}),
+    ...(data?.formData ?? {}),
+    // fallback top-level fields (only if not present above)
+    employeeNameEn: (data?.formData?.employeeNameEn ?? perEmpForm?.employeeNameEn) ?? data?.name,
+    department: (data?.formData?.department ?? perEmpForm?.department) ?? data?.department,
+    dateOfAppointment: (data?.formData?.dateOfAppointment ?? perEmpForm?.dateOfAppointment) ?? data?.dob,
+    mobileNumber: (data?.formData?.mobileNumber ?? perEmpForm?.mobileNumber) ?? data?.phone,
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="fixed inset-0 bg-black/40" onClick={onClose} aria-hidden="true" />
@@ -96,7 +136,7 @@ export default function PreviewModal({
 
             <div className="flex justify-between">
               <span className="font-medium">Name</span>
-              <span>{data.formData?.employeeNameEn ?? data.name ?? "—"}</span>
+              <span>{mergedForm?.employeeNameEn ?? data.formData?.employeeNameEn ?? data.name ?? "—"}</span>
             </div>
 
             <div className="flex justify-between">
@@ -106,17 +146,17 @@ export default function PreviewModal({
 
             <div className="flex justify-between">
               <span className="font-medium">Department</span>
-              <span>{data.formData?.department ?? data.department ?? "—"}</span>
+              <span>{mergedForm?.department ?? data.formData?.department ?? data.department ?? "—"}</span>
             </div>
 
             <div className="flex justify-between">
               <span className="font-medium">Date of Appointment</span>
-              <span>{data.formData?.dateOfAppointment ?? data.dob ?? "—"}</span>
+              <span>{mergedForm?.dateOfAppointment ?? data.formData?.dateOfAppointment ?? data.dob ?? "—"}</span>
             </div>
 
             <div className="flex justify-between">
               <span className="font-medium">Mobile</span>
-              <span>{data.formData?.mobileNumber ?? data.phone ?? "—"}</span>
+              <span>{mergedForm?.mobileNumber ?? data.formData?.mobileNumber ?? data.phone ?? "—"}</span>
             </div>
 
             <div>
@@ -135,7 +175,12 @@ export default function PreviewModal({
 
             <div className="text-right">
               <Button
-                onClick={() => { onClose(); onEdit?.(data.id); }}
+                onClick={() => {
+                  onClose();
+                  // Prefer calling onEdit with employee number so the Update page can load per-employee data
+                  const editId = data.employeeNo ?? data.formData?.employeeNo ?? data.id;
+                  onEdit?.(editId);
+                }}
                 className="px-4 py-2 mr-2"
               >
                 {language === "en" ? "Edit" : "संपादित करें"}

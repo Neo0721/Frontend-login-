@@ -52,6 +52,24 @@ function writeLocal(key: string, v: any) {
   } catch {}
 }
 
+// --- BEGIN: small helpers for per-employee persistence and submitted flag ---
+// these are minimal, safe additions — they do not replace your draft/last flow.
+// They allow saving a per-employee copy and a submitted flag if an employee id is available.
+function _setSubmittedFlagForEmp(empNo?: string) {
+  if (!empNo) return;
+  try {
+    localStorage.setItem(`idcard_submitted_${empNo}`, "true");
+  } catch {}
+}
+function _savePerEmpData(empNo?: string, formData?: any) {
+  if (!empNo || !formData) return;
+  try {
+    // store plain object so other components (preview/update) can read it easily
+    localStorage.setItem(`idcard_data_${empNo}`, JSON.stringify(formData));
+  } catch {}
+}
+// --- END: helpers ---
+
 export default function UpdateApplication({
   onNavigate,
   language,
@@ -85,6 +103,24 @@ export default function UpdateApplication({
   const [msg, setMsg] = useState<string | null>(null);
 
   useEffect(() => {
+    // If caller provided an employee identifier (payload.empNo), prefer per-employee saved data
+    const empNoFromPayload =
+      payload?.empNo ?? payload?.formData?.empNo ?? (values as any).empNo;
+    if (empNoFromPayload) {
+      try {
+        const rawPerEmp = localStorage.getItem(`idcard_data_${empNoFromPayload}`);
+        if (rawPerEmp) {
+          const parsed = JSON.parse(rawPerEmp);
+          // parsed may be the raw form object or a wrapper — we try both
+          const source = parsed?.formData ?? parsed;
+          setValues((s) => ({ ...s, ...(source ?? {}) }));
+          return;
+        }
+      } catch {
+        // ignore parse errors, fall back to other sources below
+      }
+    }
+
     if (payload?.formData) {
       setValues((s) => ({ ...s, ...(payload.formData ?? {}) }));
       return;
@@ -129,6 +165,23 @@ export default function UpdateApplication({
       updatedAt: new Date().toISOString(),
     };
     writeLocal(DRAFT_KEY, draft);
+
+    // ALSO persist as the "last submitted" application so preview reads updated values
+    writeLocal(LAST_KEY, draft);
+
+    // If an empNo is available from payload.formData or payload.empNo or values.empNo,
+    // save per-employee data and set the submitted flag so other parts of app can disable Apply.
+    const empNo =
+      payload?.empNo ?? payload?.formData?.empNo ?? (values as any).empNo ?? null;
+    if (empNo) {
+      try {
+        _savePerEmpData(empNo, values);
+        _setSubmittedFlagForEmp(empNo);
+      } catch {
+        // ignore storage errors
+      }
+    }
+
     setMsg("Saved.");
     setTimeout(() => {
       setMsg(null);
